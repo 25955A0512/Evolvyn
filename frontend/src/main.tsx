@@ -18,6 +18,9 @@ import {
   KeyRound,
 } from "lucide-react";
 import { PlatformHelp } from "./components/PlatformHelp";
+import { UiIcon, WorkspaceArtwork } from "./components/UiIcon";
+import { ComposerActions } from "./components/ComposerActions";
+import { ConnectorArt } from "./components/ConnectorGallery";
 import { ToolAccess, type ContextCall } from "./components/ToolAccess";
 import { client } from "./api";
 import type { Business, Convo, Run } from "./types";
@@ -36,6 +39,7 @@ import "@fontsource/manrope/500.css";
 import "@fontsource/manrope/600.css";
 import "@fontsource/manrope/800.css";
 import "./style.css";
+import "./workspace-refresh.css";
 function App() {
   const [token, setToken] = useState(
     sessionStorage.getItem("evolvyn-token") || "",
@@ -55,6 +59,14 @@ function App() {
   const [runs, setRuns] = useState<Record<string, Run>>({});
   const [search, setSearch] = useState("");
   const [sidebar, setSidebar] = useState(innerWidth > 560);
+  useEffect(() => {
+    const mobile = window.matchMedia("(max-width: 560px)");
+    const closeDrawer = () => {
+      if (mobile.matches) setSidebar(false);
+    };
+    mobile.addEventListener("change", closeDrawer);
+    return () => mobile.removeEventListener("change", closeDrawer);
+  }, []);
   const [settings, setSettings] = useState(false);
   const [integrations, setIntegrations] = useState<
     { name: string; configured: boolean; status?: string }[]
@@ -69,6 +81,7 @@ function App() {
   const [contextTools, setContextTools] = useState<ContextCall[]>([]);
   const [publicResearch, setPublicResearch] = useState(false);
   const [marketQuery, setMarketQuery] = useState("");
+  const uploadInput = useRef<HTMLInputElement>(null);
   function manageConnections(tab: "servers" | "tools" = "servers") {
     setControlTab(tab);
     setControlCenter(true);
@@ -471,7 +484,7 @@ function App() {
               if (innerWidth < 560) setSidebar(false);
             }}
           >
-            <Plus size={17} /> New conversation
+            <UiIcon name="plus" size={21} /> New conversation
           </button>
           <label className="search">
             <Search size={15} />
@@ -571,61 +584,61 @@ function App() {
                 className="studio-nav-link"
                 onClick={() => setStudio("build")}
               >
-                <Code2 size={15} />
+                <UiIcon name="code" />
                 Build a product
               </button>
               <button
                 className="studio-nav-link"
                 onClick={() => setStudio("discuss")}
               >
-                <Users size={15} />
+                <UiIcon name="users" />
                 Discussion room
               </button>
               <button
                 className="studio-nav-link"
                 onClick={() => setStudio("agents")}
               >
-                <Activity size={15} />
+                <UiIcon name="git-branch" />
                 Agents
               </button>
               <button
                 className="studio-nav-link"
                 onClick={() => setStudio("memory")}
               >
-                <Brain size={15} />
+                <UiIcon name="brain" />
                 Agent memory
               </button>
               <button
                 className="studio-nav-link"
                 onClick={() => setStudio("integrations")}
               >
-                <Plug size={15} />
+                <UiIcon name="plug-connected" />
                 Integrations
               </button>
               <button
                 className="studio-nav-link"
                 onClick={() => setStudio("vault")}
               >
-                <KeyRound size={15} />
+                <UiIcon name="key" />
                 Key vault
               </button>
               <button
                 className="control-launch"
                 onClick={() => setControlCenter(true)}
               >
-                Agent control center <span>New</span>
+                <UiIcon name="shield-check" /> Agent control center
               </button>
               <button onClick={() => setPanel("reports")}>
-                Saved reports & outcomes
+                <UiIcon name="file-text" /> Saved reports & outcomes
               </button>
               <button onClick={() => setPanel("tasks")}>
-                Tasks & action plans
+                <UiIcon name="check" /> Tasks & action plans
               </button>
               <button onClick={() => setPanel("automation")}>
-                Recurring analysis
+                <UiIcon name="calendar" /> Recurring analysis
               </button>
               <button onClick={() => setPanel("workflow")}>
-                Agent workflow & tools
+                <UiIcon name="automation" /> Agent workflow & tools
               </button>
             </div>
             <div className="section">CONVERSATIONS</div>
@@ -728,6 +741,7 @@ function App() {
               </p>
               {providers.map((p) => (
                 <div className="provider-card" key={p.id}>
+                  <ConnectorArt name={p.name} size={27} />
                   <div>
                     <strong>{p.name}</strong>
                     <small>{p.model}</small>
@@ -794,30 +808,41 @@ function App() {
                     <span className="mark">e</span>evolvyn
                   </div>
                   <h1>
-                    Your next idea.
-                    <br />A team to make it happen.
+                    Your next idea. <br />A team to make it happen.
                   </h1>
                   <p>
                     Build products, understand your business, and turn the right
                     evidence into your next decision.
                   </p>
                   <div className="home-actions">
-                    <button onClick={() => setStudio("build")}>
-                      <Code2 size={26} />
+                    <button
+                      className="home-build"
+                      onClick={() => setStudio("build")}
+                    >
+                      <UiIcon name="code" size={25} />
+                      <WorkspaceArtwork kind="build" />
                       <strong>
                         Build a product <ArrowUpRight size={15} />
                       </strong>
                       <span>From requirements to a working starter</span>
                     </button>
-                    <button onClick={() => setStudio("growth")}>
-                      <Activity size={22} />
+                    <button
+                      className="home-growth"
+                      onClick={() => setStudio("growth")}
+                    >
+                      <UiIcon name="chart-line" size={25} />
+                      <WorkspaceArtwork kind="growth" />
                       <strong>
                         Grow your business <ArrowUpRight size={15} />
                       </strong>
                       <span>Start with your customer and conversion data</span>
                     </button>
-                    <button onClick={() => setStudio("discuss")}>
-                      <Users size={23} />
+                    <button
+                      className="home-discuss"
+                      onClick={() => setStudio("discuss")}
+                    >
+                      <UiIcon name="users" size={25} />
+                      <WorkspaceArtwork kind="discuss" />
                       <strong>
                         Discuss your next move <ArrowUpRight size={15} />
                       </strong>
@@ -851,7 +876,13 @@ function App() {
                       className={m.role}
                     >
                       <div className="message-label">
-                        {m.role === "user" ? "You" : "✳ Evolvyn"}
+                        {m.role === "user" ? (
+                          "You"
+                        ) : (
+                          <>
+                            <span className="assistant-emblem">e</span> Evolvyn
+                          </>
+                        )}
                       </div>
                       <div className="markdown">
                         <ReactMarkdown
@@ -963,7 +994,7 @@ function App() {
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => {
               e.preventDefault();
-              if (!activeHere) upload(e.dataTransfer.files);
+              if (!busy && !activeHere) upload(e.dataTransfer.files);
             }}
           >
             <div className="composer">
@@ -1043,9 +1074,22 @@ function App() {
                 }}
               />
               <div className="composer-tools">
-                <label className="upload" title="Upload TXT, CSV, PDF or DOCX">
-                  <Paperclip size={19} />
+                <ComposerActions
+                  disabled={busy || !!activeHere}
+                  onUpload={() => uploadInput.current?.click()}
+                  onConnections={() => manageConnections()}
+                  onBuild={() => setStudio("build")}
+                  onCanvas={() => setStudio("canvas")}
+                  onReports={() => setPanel("reports")}
+                />
+                <label
+                  className="upload direct-upload"
+                  title="Upload TXT, CSV, PDF or DOCX"
+                >
+                  <span className="sr-only">Upload evidence</span>
                   <input
+                    ref={uploadInput}
+                    aria-label="Upload evidence files"
                     type="file"
                     disabled={busy || !!activeHere}
                     accept=".txt,.csv,.pdf,.docx"
@@ -1079,7 +1123,7 @@ function App() {
                   value={mode}
                   onChange={(e) => setMode(e.target.value)}
                 >
-                  <option value="default">Default agent model route</option>
+                  <option value="default">Default model route</option>
                   <option value="local">Local AI · no API key</option>
                   <option value="evidence">Evidence only</option>
                   <option value="provider">OpenAI · optional</option>

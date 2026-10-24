@@ -5,7 +5,7 @@ import json
 def bundle(root=None):
     root=root or Path(__file__).resolve().parents[1]
     paths=[]
-    for folder,patterns in [('backend',('*.py','template_assets/package*.json','template_assets/node-api/package*.json')),('frontend',('src/**/*.tsx','src/**/*.ts','src/**/*.css','package.json','package-lock.json','tsconfig.json','vite.config.js','index.html','Dockerfile','nginx.conf')),('sample-data',('*.txt','*.csv',))]:
+    for folder,patterns in [('backend',('*.py','template_assets/package*.json','template_assets/node-api/package*.json')),('frontend',('src/**/*.tsx','src/**/*.ts','src/**/*.css','public/assets/tabler/*.svg','public/assets/tabler/LICENSE.txt','public/assets/tabler/manifest.json','package.json','package-lock.json','tsconfig.json','vite.config.js','index.html','Dockerfile','nginx.conf')),('sample-data',('*.txt','*.csv',))]:
         for pattern in patterns:paths.extend((root/folder).glob(pattern))
     for name in ('requirements.lock','scripts/container_start.py','scripts/verify_local_model.py'):
         paths.append(root/name)

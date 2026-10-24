@@ -1,0 +1,68 @@
+{
+  "note": "User-provided reference assets, preserved without modification. Brand marks identify their respective services; no affiliation or verified connection is implied.",
+  "assets": [
+    {
+      "file": "gemini.jpg",
+      "source": "User-provided images.zip / images/gemini.jpg",
+      "sha256": "6ed98d6e33c4a4c28ff776b72a9bfea8fd503f6ab961bb089a150f422b5e9bc5",
+      "dimensions": [
+        512,
+        512
+      ]
+    },
+    {
+      "file": "github.png",
+      "source": "User-provided images.zip / images/github.png",
+      "sha256": "9e073d3c58e8abcb4c738765234061a0d9e18d9882295fda9d946254529c70fe",
+      "dimensions": [
+        447,
+        447
+      ]
+    },
+    {
+      "file": "google-drive.png",
+      "source": "User-provided images.zip / images/google drive.png",
+      "sha256": "7db34d90c84f5d3bc040dfafd914a0df22ac10cc837318c2a6e8b05586dd8259",
+      "dimensions": [
+        472,
+        423
+      ]
+    },
+    {
+      "file": "groq.png",
+      "source": "User-provided images.zip / images/groq.png",
+      "sha256": "0af9d26d7145130436e280628a90793fddcb5765b1a791ba389201b8730f60c5",
+      "dimensions": [
+        554,
+        554
+      ]
+    },
+    {
+      "file": "notion.png",
+      "source": "User-provided images.zip / images/notion.png",
+      "sha256": "c0e228a68564cd05914744eb50ffbb945c9ac729977298e35e53adb115f576f3",
+      "dimensions": [
+        225,
+        225
+      ]
+    },
+    {
+      "file": "shopify.png",
+      "source": "User-provided images.zip / images/shopify.png",
+      "sha256": "83c1c4059258025ca55899a562b410dc7fd1e0063c093b6a7a07e4b20e441c4b",
+      "dimensions": [
+        520,
+        588
+      ]
+    },
+    {
+      "file": "slack.png",
+      "source": "User-provided images.zip / images/slcak.png",
+      "sha256": "34cf7d43d40ddbf2b19eed4de897c6d2341dc308cb34145cd4bbc5c44b97681a",
+      "dimensions": [
+        250,
+        250
+      ]
+    }
+  ]
+}

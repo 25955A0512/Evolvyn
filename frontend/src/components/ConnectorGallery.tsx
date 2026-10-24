@@ -1,17 +1,7 @@
 import { useState } from "react";
-import {
-  ShoppingBag,
-  GitBranch,
-  MessageSquare,
-  FolderOpen,
-  BookOpen,
-  Globe,
-  ChartNoAxesCombined,
-  FileSpreadsheet,
-  Plus,
-  Search,
-  ArrowUpRight,
-} from "lucide-react";
+import { UiIcon } from "./UiIcon";
+import { serviceLogos } from "../assets/connector-logos";
+import { Plus, Search, ArrowUpRight } from "lucide-react";
 export function ConnectorArt({
   name,
   size = 26,
@@ -20,32 +10,78 @@ export function ConnectorArt({
   size?: number;
 }) {
   const key = name.toLowerCase();
-  const [Icon, color] =
-    key.includes("shop") || key.includes("commerce") || key.includes("product")
-      ? [ShoppingBag, "#75a833"]
-      : key.includes("github") || key.includes("build")
-        ? [GitBranch, "#262b32"]
+  const logo = key.includes("gemini")
+    ? "gemini"
+    : key.includes("groq")
+      ? "groq"
+      : key.includes("github")
+        ? "github"
         : key.includes("slack")
-          ? [MessageSquare, "#704267"]
+          ? "slack"
           : key.includes("drive")
-            ? [FolderOpen, "#377bc8"]
+            ? "google-drive"
             : key.includes("notion")
-              ? [BookOpen, "#373b3a"]
+              ? "notion"
+              : key.includes("shopify")
+                ? "shopify"
+                : null;
+  const asset = key.includes("github")
+    ? "brand-github"
+    : key.includes("slack")
+      ? "brand-slack"
+      : key.includes("drive")
+        ? "brand-google-drive"
+        : key.includes("notion")
+          ? "brand-notion"
+          : key.includes("figma")
+            ? "brand-figma"
+            : key.includes("shop") || key.includes("commerce")
+              ? "shopping-bag"
               : key.includes("evidence") || key.includes("csv")
-                ? [FileSpreadsheet, "#31876a"]
+                ? "file-spreadsheet"
                 : key.includes("strateg") || key.includes("analy")
-                  ? [ChartNoAxesCombined, "#8070c6"]
-                  : [Globe, "#3b8a9a"];
+                  ? "chart-line"
+                  : key.includes("build")
+                    ? "code"
+                    : "world";
+  const color =
+    key.includes("shop") || key.includes("commerce") || key.includes("product")
+      ? "#75a833"
+      : key.includes("github") || key.includes("build")
+        ? "#262b32"
+        : key.includes("slack")
+          ? "#704267"
+          : key.includes("drive")
+            ? "#377bc8"
+            : key.includes("notion")
+              ? "#373b3a"
+              : key.includes("evidence") || key.includes("csv")
+                ? "#31876a"
+                : key.includes("strateg") || key.includes("analy")
+                  ? "#8070c6"
+                  : "#3b8a9a";
   return (
     <span
       className="connector-art"
       style={{ "--connector-color": color } as any}
     >
-      <Icon size={size} />
-      <svg viewBox="0 0 80 80" aria-hidden="true">
-        <circle cx="65" cy="12" r="15" />
-        <path d="M0 60L80 20M0 75L80 35" />
-      </svg>
+      {logo ? (
+        <img
+          className="connector-logo"
+          src={serviceLogos[logo]}
+          width={size + 6}
+          height={size + 6}
+          alt=""
+        />
+      ) : (
+        <UiIcon name={asset} size={size} />
+      )}
+      {!logo && (
+        <svg viewBox="0 0 80 80" aria-hidden="true">
+          <circle cx="65" cy="12" r="15" />
+          <path d="M0 60L80 20M0 75L80 35" />
+        </svg>
+      )}
     </span>
   );
 }

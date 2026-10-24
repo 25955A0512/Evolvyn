@@ -1,5 +1,6 @@
 import { ConnectorGallery, ConnectorArt } from "./ConnectorGallery";
 import { useEffect, useRef, useState } from "react";
+import { UiIcon } from "./UiIcon";
 import {
   X,
   Server,
@@ -219,7 +220,19 @@ export function AgentControlCenter({
                   setNotice("");
                 }}
               >
-                <item.icon size={18} />
+                <UiIcon
+                  name={
+                    (
+                      {
+                        servers: "plug-connected",
+                        tools: "layout-grid",
+                        harness: "git-branch",
+                        governance: "shield-check",
+                      } as const
+                    )[item.id]
+                  }
+                  size={20}
+                />
                 <span>
                   {item.name}
                   <small>{item.caption}</small>

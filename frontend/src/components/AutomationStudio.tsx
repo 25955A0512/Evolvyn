@@ -10,6 +10,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import type { client } from "../api";
+import { UiIcon } from "./UiIcon";
 export function AutomationStudio({
   api,
   projectId,
@@ -124,7 +125,16 @@ export function AutomationStudio({
           >
             <div className="automation-illustration">
               <div>
-                <t.icon size={25} />
+                <UiIcon
+                  name={
+                    t.id === "schedule"
+                      ? "calendar"
+                      : t.id === "trigger"
+                        ? "file-text"
+                        : "git-branch"
+                  }
+                  size={25}
+                />
                 <strong>{t.top}</strong>
               </div>
               <ArrowDown size={22} />

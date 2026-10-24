@@ -162,6 +162,8 @@ Local callbacks are `http://localhost:3000/api/auth/oauth/google/callback` and `
 
 See [agent visibility, platform help and Canvas automations](docs/EXPERIENCE_UPDATE.md) for the latest UI changes, private Gemini/Groq configuration and a manual acceptance walkthrough.
 
+The [workspace visual refresh](docs/VISUAL_WORKSPACE.md) adds supplied connector/provider logos, locally hosted licensed icons, illustrated entry cards and a contextual composer menu while keeping the existing agent execution and approval workflows.
+
 ```bash
 .venv/bin/python -m pytest -q
 npm --prefix frontend run build
@@ -171,6 +173,7 @@ python3 tests/e2e_studio.py
 python3 tests/e2e_evolution.py
 python3 tests/e2e_commerce.py
 python3 tests/e2e_experience.py
+python3 tests/e2e_visual_workspace.py
 .venv/bin/python tests/live_exported_runtime.py
 bash scripts/backup.sh
 ```

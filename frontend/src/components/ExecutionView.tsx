@@ -2,6 +2,7 @@ import { Activity, Check, X, Square } from "lucide-react";
 import { useState } from "react";
 import type { Run } from "../types";
 import { RecommendationCards } from "./RecommendationCards";
+import { UiIcon } from "./UiIcon";
 export function ExecutionView({
   run,
   busy,
@@ -26,7 +27,7 @@ export function ExecutionView({
   const [recommendationId, setRecommendationId] = useState<string | null>(null);
   const active = ["CREATED", "RUNNING"].includes(run.state);
   return (
-    <div className="execution">
+    <div className="execution" data-state={run.state}>
       <details open={active}>
         <summary>
           <Activity size={14} /> Agent activity ·{" "}
@@ -34,7 +35,20 @@ export function ExecutionView({
         </summary>
         {run.events.map((e, i) => (
           <div className="event" key={i}>
-            <Check size={13} />
+            <UiIcon
+              name={
+                e.stage === "research"
+                  ? "world"
+                  : e.stage === "approval"
+                    ? "shield-check"
+                    : e.stage === "respond"
+                      ? "message-circle"
+                      : e.stage === "strategy"
+                        ? "brain"
+                        : "file-text"
+              }
+              size={17}
+            />
             <span>
               <strong>{e.stage}</strong>
               {e.detail}

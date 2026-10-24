@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { MessageCircle, X, ArrowUp, Plus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import type { client } from "../api";
+import { ConnectorArt } from "./ConnectorGallery";
 export function PlatformHelp({ api }: { api: ReturnType<typeof client> }) {
   const [open, setOpen] = useState(false),
     [thread, setThread] = useState<any>(null),
@@ -74,7 +75,8 @@ export function PlatformHelp({ api }: { api: ReturnType<typeof client> }) {
                 <ReactMarkdown>{m.text}</ReactMarkdown>
                 {m.provider && (
                   <small>
-                    {m.provider} · {m.model}
+                    <ConnectorArt name={m.provider} size={15} /> {m.provider} ·{" "}
+                    {m.model}
                     {m.fallback ? " · fallback provider" : ""}
                   </small>
                 )}

@@ -1,4 +1,5 @@
 import { ConnectorArt } from "./ConnectorGallery";
+import { UiIcon } from "./UiIcon";
 import { useEffect, useState } from "react";
 import {
   X,
@@ -162,6 +163,30 @@ function VaultPanel({ api }: { api: API }) {
                   <option value="mcp">MCP server bearer token</option>
                 </select>
               </label>
+              <div
+                className="provider-choice-preview"
+                aria-label="Selected credential provider"
+              >
+                <ConnectorArt name={provider} size={26} />
+                <div>
+                  <strong>
+                    {
+                      (
+                        {
+                          provider: "OpenAI",
+                          groq: "Groq",
+                          gemini: "Gemini",
+                          openrouter: "OpenRouter",
+                          mcp: "MCP server",
+                        } as Record<string, string>
+                      )[provider]
+                    }
+                  </strong>
+                  <small>
+                    Credential stays encrypted in your workspace vault
+                  </small>
+                </div>
+              </div>
               <label>
                 Secret value
                 <input
@@ -330,7 +355,7 @@ function VaultPanel({ api }: { api: API }) {
           )}
           {data.bindings.map((r: any) => (
             <div className="studio-route" key={r.id}>
-              <Workflow size={16} />
+              <ConnectorArt name={r.provider} size={22} />
               <div>
                 <strong>
                   {r.agent === "default"
@@ -884,7 +909,23 @@ export function AgentWorkspace({
               key={t.id}
               onClick={() => setTab(t.id)}
             >
-              <t.icon size={18} />
+              <UiIcon
+                name={
+                  (
+                    {
+                      build: "code",
+                      growth: "chart-line",
+                      canvas: "automation",
+                      runtime: "shield-check",
+                      discuss: "users",
+                      agents: "git-branch",
+                      memory: "brain",
+                      vault: "key",
+                      integrations: "plug-connected",
+                    } as const
+                  )[t.id]
+                }
+              />
               {t.name}
             </button>
           ))}
