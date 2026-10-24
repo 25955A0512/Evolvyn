@@ -184,3 +184,82 @@ async def test_incomplete_compiler_receipt_never_claims_success(monkeypatch):
     original=httpx.AsyncClient
     monkeypatch.setattr(source_compiler.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(lambda request:httpx.Response(200,json={'status':'passed'})),**kwargs))
     assert (await source_compiler.compile_frontend({'frontend/src/main.jsx':'source'}))['status']=='unavailable'
+
+@pytest.fixture
+def planner(models,monkeypatch):
+    original=module.GRAPH_HARNESS.s['response_chunks']
+    async def chunks(report,question,history,mode):
+        if 'PRODUCT_PLAN_JSON' in question:
+            schema=json.loads(report['_response_schema_json'])
+            assert schema['properties']['proposed_requirements']['maxProperties']==11
+            assert schema['properties']['proposed_requirements']['properties']['entities']['type']=='array'
+            yield json.dumps({'reply':'I suggest this small first version. Confirm the setup to start the development team; payments remain pending.','proposed_requirements':{key:json.loads(value) if key=='entities' else value for key,_,value in QUESTIONS}})
+        else:
+            async for chunk in original(report,question,history,mode):yield chunk
+    monkeypatch.setitem(module.GRAPH_HARNESS.s,'response_chunks',chunks)
+
+def test_plan_confirmation_starts_durable_build_and_plans_files_before_approval(client,planner,monkeypatch):
+    monkeypatch.delenv('EVOLVYN_COMPILER_URL',raising=False)
+    p=product(client);base='/api/studio/products/'+p['id']
+    plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Build a support workspace','mode':'local','intent':'plan'}))
+    assert plan['state']=='COMPLETED',plan.get('error')
+    assert len(plan['graph_checkpoint']['nodes']['proposal']['output']['proposed_requirements'])==11
+    assert client.get(base).json()['requirements']=={}
+    response=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'})
+    assert response.status_code==202,response.text
+    result=response.json();assert result['product']['ready'] and result['execution']['id']
+    run_id=result['execution']['id']
+    # No frontend action launches this second execution; it already exists in PG.
+    assert client.get(base).json()['last_build_run']==run_id
+    client.get('/api/executions/'+run_id+'/live')
+    waiting=client.get('/api/executions/'+run_id).json()
+    assert waiting['state']=='WAITING_FOR_APPROVAL',waiting.get('error')
+    assert 'frontend/src/main.jsx' in waiting['graph_checkpoint']['nodes']['file_plan']['output']['files']
+    assert not client.get('/api/studio/builds').json()
+    history=client.get(base+'/agent-history').json()
+    assert [r['id'] for r in history]==[run_id,plan['id']]
+    assert client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'}).status_code==409
+    binding=waiting['graph_checkpoint']['pending']['binding']
+    client.post('/api/harness/executions/'+run_id+'/decision',json={'approve':True,'binding':binding}).raise_for_status()
+    client.get('/api/executions/'+run_id+'/live')
+    final=client.get('/api/executions/'+run_id).json()
+    assert final['state']=='COMPLETED',final.get('error')
+    built=client.get('/api/studio/builds/'+final['graph_checkpoint']['nodes']['implementation']['output']['id']).json()
+    assert built['state']=='READY' and built['files']['backend/app.py']
+
+def test_partial_plan_confirmation_is_saved_without_false_build_claim(client,models):
+    p=product(client);base='/api/studio/products/'+p['id']
+    plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Use dark theme','mode':'local','intent':'chat'}))
+    assert plan['state']=='COMPLETED',plan.get('error')
+    result=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'})
+    assert result.status_code==202,result.text
+    assert result.json()['execution'] is None and 'missing' in result.json()['launch_error']
+    assert client.get(base).json()['requirements']=={'theme':'dark'}
+    assert len(client.get(base+'/agent-history').json())==1
+
+def test_confirmed_plan_survives_launch_configuration_failure(client,planner):
+    p=product(client);base='/api/studio/products/'+p['id']
+    plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Build a support workspace','mode':'local','intent':'plan'}))
+    client.put('/api/vault/bindings/default',json={'provider':'evidence'}).raise_for_status()
+    result=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'default'})
+    assert result.status_code==202,result.text
+    assert result.json()['product']['ready'] and not result.json()['execution']
+    assert 'real model route' in result.json()['launch_error']
+    assert client.get(base).json()['revision']==2
+
+def test_confirm_plan_checks_product_scope_before_mutation(client,planner):
+    p=product(client);other=product(client);base='/api/studio/products/'+p['id']
+    plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Build support workspace','mode':'local','intent':'plan'}))
+    response=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':other['id'],'revision':1,'mode':'local'})
+    assert response.status_code==409
+    assert client.get(base).json()['requirements']=={}
+
+
+def test_empty_planner_decisions_are_not_accepted_as_complete(client,monkeypatch):
+    async def empty(*args):yield json.dumps({'reply':'Review this suggestion','proposed_requirements':{'audience':'   '}})
+    monkeypatch.setitem(module.GRAPH_HARNESS.s,'response_chunks',empty)
+    p=product(client);base='/api/studio/products/'+p['id']
+    plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Build support workspace','mode':'local','intent':'plan'}))
+    assert plan['state']=='FAILED'
+    assert client.get(base).json()['requirements']=={}
+    assert client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'}).status_code==409

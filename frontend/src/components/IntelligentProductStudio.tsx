@@ -4,13 +4,14 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { client } from "../api";
 import { ToolAccess, type ManageConnections } from "./ToolAccess";
-import { UiIcon, WorkspaceArtwork } from "./UiIcon";
+import { UiIcon } from "./UiIcon";
 import { ProductPreview } from "./ProductPreview";
 import {
   SourceTree,
   ArchitectureDiagram,
   ProductFlow,
 } from "./ProductArtifacts";
+import { useNavigate, useSearchParams } from "react-router-dom";
 type API = ReturnType<typeof client>;
 const phases = [
   {
@@ -57,6 +58,20 @@ export function IntelligentProductStudio({
   onManage: ManageConnections;
   onGuided: () => void;
 }) {
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const storageKey =
+    "evolvyn-product:" +
+    (sessionStorage.getItem("evolvyn-organization") || "session") +
+    ":" +
+    (projectId || "workspace");
+  const [artifactsOpen, setArtifactsOpen] = useState(false),
+    [restoring, setRestoring] = useState(true);
+  const revealedRun = useRef<string | null>(null);
+  const mounted = useRef(true),
+    stickToBottom = useRef(true);
+  const selected = useRef<string | null>(null),
+    generation = useRef(0);
   const [products, setProducts] = useState<any[]>([]),
     [product, setProduct] = useState<any>(null),
     [builds, setBuilds] = useState<any[]>([]),
@@ -82,21 +97,77 @@ export function IntelligentProductStudio({
     ]);
     setProducts(p);
     setBuilds(b);
-    return b;
+    return { products: p, builds: b };
+  }
+  function remember(id: string) {
+    sessionStorage.setItem(storageKey, id || "new");
+    if (!mounted.current || window.location.pathname !== "/product-studio")
+      return;
+    // Module transitions can mount this view before the router context catches
+    // up. An absolute destination prevents a late restore writing to /growth.
+    const next = new URLSearchParams(window.location.search);
+    if (id) next.set("product", id);
+    else next.delete("product");
+    navigate("/product-studio" + (next.size ? "?" + next.toString() : ""), {
+      replace: true,
+    });
+  }
+  function detach() {
+    watches.current.forEach((w) => w.abort());
+    watches.current = [];
+    generation.current++;
+  }
+  function newProduct() {
+    detach();
+    selected.current = null;
+    remember("");
+    setProduct(null);
+    setRun(null);
+    setBuild(null);
+    setInterview(null);
+    setHistory([]);
+    setText("");
+    setError("");
+    setNotice("");
+    setArtifactsOpen(false);
   }
   async function load(id: string) {
+    detach();
+    const current = generation.current;
+    selected.current = id;
+    setProduct(null);
+    setRun(null);
+    setInterview(null);
+    setBuild(null);
+    setHistory([]);
     const [p, h, b] = await Promise.all([
       api.json("/studio/products/" + id),
       api.json("/studio/products/" + id + "/agent-history"),
       catalog(),
     ]);
+    if (current !== generation.current) return;
+    remember(id);
     setProduct(p);
     setHistory(h);
-    setBuild(b.find((b: any) => b.spec_id === id) || null);
+    setBuild(b.builds.find((b: any) => b.spec_id === id) || null);
     const latest = h.find((r: any) =>
       r.definition?.nodes.some((n: any) => n.id === "contracts"),
     );
     setRun(latest || null);
+    if (latest) {
+      setAgents(
+        phases
+          .filter((phase) =>
+            latest.definition.nodes.some((node: any) => node.id === phase.id),
+          )
+          .map((phase) => phase.id),
+      );
+      setBuildSource(
+        latest.definition.nodes.some(
+          (node: any) => node.id === "implementation",
+        ),
+      );
+    }
     const chat = h.find((r: any) =>
       r.definition?.nodes.some((n: any) => n.id === "interview"),
     );
@@ -110,33 +181,108 @@ export function IntelligentProductStudio({
       );
   }
   useEffect(() => {
-    catalog().catch((e) => setError(e.message));
-    return () => watches.current.forEach((w) => w.abort());
-  }, []);
+    let active = true;
+    mounted.current = true;
+    setRestoring(true);
+    catalog()
+      .then(async ({ products: p }) => {
+        if (!active) return;
+        const available = p.filter(
+          (row: any) => row.project_id === (projectId || null),
+        );
+        const requested =
+          searchParams.get("product") || sessionStorage.getItem(storageKey);
+        const id =
+          requested === "new"
+            ? null
+            : available.find((row: any) => row.id === requested)?.id ||
+              (requested ? null : available[0]?.id);
+        if (id) await load(id);
+        else {
+          selected.current = null;
+          setProduct(null);
+          setRun(null);
+          setInterview(null);
+          setHistory([]);
+          setBuild(null);
+        }
+        if (requested && requested !== "new" && !id)
+          setError(
+            "This product is unavailable in the current workspace. Choose another saved product or start a new one.",
+          );
+      })
+      .catch((e) => active && setError(e.message))
+      .finally(() => active && setRestoring(false));
+    return () => {
+      active = false;
+      mounted.current = false;
+      detach();
+    };
+  }, [storageKey]);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  }, [interview?.output]);
+    const id = searchParams.get("product");
+    if (!restoring && id && id !== selected.current) act(() => load(id));
+  }, [searchParams.get("product")]);
+  useEffect(() => {
+    if (
+      run?.state !== "RUNNING" ||
+      run?.graph_checkpoint?.current?.id !== "implementation"
+    )
+      return;
+    let active = true;
+    const timer = setInterval(
+      () =>
+        api
+          .json("/studio/builds")
+          .then((rows) => {
+            if (active)
+              setBuild(
+                rows.find((row: any) => row.spec_id === selected.current) ||
+                  null,
+              );
+          })
+          .catch(() => {}),
+      3000,
+    );
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [run?.state, run?.graph_checkpoint?.current?.id]);
+  useEffect(() => {
+    if (stickToBottom.current)
+      bottom.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [
+    interview?.output,
+    interview?.state,
+    run?.state,
+    run?.graph_checkpoint?.current?.id,
+  ]);
   function follow(initial: any, chat: boolean) {
+    if (!mounted.current) return;
     if (chat) setInterview(initial);
     else setRun(initial);
+    const current = generation.current;
     const controller = new AbortController();
     watches.current.push(controller);
     api
       .watch(
         initial.id,
         (r) => {
+          if (current !== generation.current) return;
           if (chat) setInterview(r);
           else setRun(r);
           if (!["CREATED", "RUNNING"].includes(r.state)) {
             if (chat)
               setHistory((prev) => [r, ...prev.filter((p) => p.id !== r.id)]);
             catalog()
-              .then((b) => {
+              .then(({ builds: b }) => {
+                if (current !== generation.current) return;
                 const id = output(r, "implementation")?.id;
                 if (id) setBuild(b.find((v: any) => v.id === id) || null);
                 else if (!chat)
                   setBuild(
-                    b.find((v: any) => v.spec_id === product?.id) || null,
+                    b.find((v: any) => v.spec_id === selected.current) || null,
                   );
               })
               .catch((e) => setError(e.message));
@@ -148,6 +294,17 @@ export function IntelligentProductStudio({
         if (e.name !== "AbortError") setError(e.message);
       });
   }
+  useEffect(() => {
+    if (
+      run?.id &&
+      output(run, "file_plan")?.files?.length &&
+      revealedRun.current !== run.id
+    ) {
+      revealedRun.current = run.id;
+      setArtifactsOpen(true);
+      setTab("source");
+    }
+  }, [run?.id, output(run, "file_plan")?.files]);
   async function act(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -160,6 +317,83 @@ export function IntelligentProductStudio({
       setBusy(false);
     }
   }
+  async function startBuild(p: any) {
+    const r = await api.json("/studio/products/" + p.id + "/agent-build", {
+      method: "POST",
+      body: JSON.stringify({
+        spec_id: p.id,
+        revision: p.revision,
+        mode,
+        agents,
+        build_source: buildSource,
+      }),
+    });
+    setBuild(null);
+    follow(r, false);
+  }
+  async function send() {
+    let p = product;
+    const message = text.trim();
+    if (!message) return;
+    if (!p) {
+      p = await api.json("/studio/products", {
+        method: "POST",
+        body: JSON.stringify({
+          name:
+            message.replace(/\s+/g, " ").split(/[.!?]/)[0].slice(0, 70) ||
+            message.slice(0, 70),
+          goal: message,
+          project_id: projectId || null,
+        }),
+      });
+      selected.current = p.id;
+      remember(p.id);
+      setProduct(p);
+      setHistory([]);
+      setTab("overview");
+      await catalog();
+    }
+    const r = await api.json("/studio/products/" + p.id + "/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        spec_id: p.id,
+        revision: p.revision,
+        text: message,
+        mode,
+        intent: p.ready ? "chat" : "plan",
+      }),
+    });
+    setText("");
+    follow(r, true);
+  }
+  async function confirmPlan() {
+    const result = await api.json(
+      "/studio/products/" +
+        product.id +
+        "/proposals/" +
+        interview.id +
+        "/confirm-and-build",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          spec_id: product.id,
+          revision: product.revision,
+          mode,
+          agents,
+          build_source: buildSource,
+        }),
+      },
+    );
+    setProduct(result.product);
+    await catalog();
+    if (result.execution) {
+      setBuild(null);
+      follow(result.execution, false);
+      setNotice(
+        "Setup confirmed. The development workflow has started; you can leave this module and return.",
+      );
+    } else setError(result.launch_error);
+  }
   const running =
     busy ||
     [run, interview].some((r) => r && ["CREATED", "RUNNING"].includes(r.state));
@@ -167,6 +401,22 @@ export function IntelligentProductStudio({
   const contracts = output(run, "contracts");
   const pending = run?.graph_checkpoint?.pending;
   const blueprint = contracts || build?.blueprint;
+  const plannedFiles: Record<string, string> = Object.fromEntries(
+    (output(run, "file_plan")?.files || []).map((path: string) => [path, ""]),
+  );
+  const sourceFiles =
+    build?.files && Object.keys(build.files).length
+      ? build.files
+      : plannedFiles;
+  const completeProposal =
+    product &&
+    proposal &&
+    product.next_question &&
+    Object.keys({ ...product.requirements, ...proposal.proposed_requirements })
+      .length === 11;
+  const proposalAccepted = product?.proposal_history?.some(
+    (h: any) => h.execution_id === interview?.id,
+  );
   const transcript = [
     ...history.filter((r) =>
       r.definition?.nodes.some((n: any) => n.id === "interview"),
@@ -201,12 +451,24 @@ export function IntelligentProductStudio({
       <header className="product-workbench-header">
         <div>
           <span className="eyebrow">PRODUCT DEVELOPMENT WORKSPACE</span>
-          <h1>{product?.name || "Build your next business product."}</h1>
-          <p>
-            A conversation, a specialist team, and one inspectable source tree.
-          </p>
+          <h1>{product?.name || "New product conversation"}</h1>
+          <p>Describe your idea. Build it with your development team.</p>
         </div>
-        <button onClick={onGuided}>Guided form · no model</button>
+        <div className="product-header-actions">
+          <button onClick={newProduct} disabled={busy || restoring}>
+            <UiIcon name="plus" size={16} /> New product
+          </button>
+          <button
+            onClick={() => setArtifactsOpen(!artifactsOpen)}
+            aria-expanded={artifactsOpen}
+          >
+            {artifactsOpen ? "Hide workspace" : "Open workspace"}
+          </button>
+          <details>
+            <summary>Options</summary>
+            <button onClick={onGuided}>Guided form · no model</button>
+          </details>
+        </div>
       </header>
       {error && (
         <p className="error" role="alert">
@@ -220,18 +482,10 @@ export function IntelligentProductStudio({
           <select
             aria-label="Agent product"
             value={product?.id || ""}
-            onChange={(e) => {
-              watches.current.forEach((w) => w.abort());
-              setText("");
-              if (e.target.value) act(() => load(e.target.value));
-              else {
-                setProduct(null);
-                setRun(null);
-                setBuild(null);
-                setInterview(null);
-                setHistory([]);
-              }
-            }}
+            disabled={busy || restoring}
+            onChange={(e) =>
+              e.target.value ? act(() => load(e.target.value)) : newProduct()
+            }
           >
             <option value="">New product</option>
             {products
@@ -254,92 +508,66 @@ export function IntelligentProductStudio({
           {status}
         </span>
         <ToolAccess api={api} onManage={onManage} />
-        {[interview, run].filter((r) => r && ["CREATED", "RUNNING"].includes(r.state)).map((active) => (
-          <button key={active.id} disabled={busy} onClick={() => act(async () => {
-            const stopped = await api.json("/executions/" + active.id + "/cancel", {method: "POST"});
-            if (active.id === interview?.id) setInterview(stopped);
-            else setRun(stopped);
-          })}>Stop {active.id === interview?.id ? "reply" : "workflow"}</button>
-        ))}
+        {[interview, run]
+          .filter((r) => r && ["CREATED", "RUNNING"].includes(r.state))
+          .map((active) => (
+            <button
+              key={active.id}
+              disabled={busy}
+              onClick={() =>
+                act(async () => {
+                  const stopped = await api.json(
+                    "/executions/" + active.id + "/cancel",
+                    { method: "POST" },
+                  );
+                  if (active.id === interview?.id) setInterview(stopped);
+                  else setRun(stopped);
+                })
+              }
+            >
+              Stop {active.id === interview?.id ? "reply" : "workflow"}
+            </button>
+          ))}
       </div>
-      <div className="product-workbench-grid">
+      <div
+        className={
+          "product-workbench-grid " +
+          (artifactsOpen ? "with-artifacts" : "chat-only")
+        }
+      >
         <section
           className="product-conversation"
           aria-label="Product requirements conversation"
         >
-          {!product ? (
-            <form
-              className="product-new-idea"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const d = Object.fromEntries(new FormData(e.currentTarget));
-                act(async () => {
-                  const p = await api.json("/studio/products", {
-                    method: "POST",
-                    body: JSON.stringify({
-                      ...d,
-                      project_id: projectId || null,
-                    }),
-                  });
-                  setProduct(p);
-                  setTab("overview");
-                  const execution = await api.json(
-                    "/studio/products/" + p.id + "/messages",
-                    {
-                      method: "POST",
-                      body: JSON.stringify({
-                        spec_id: p.id,
-                        revision: p.revision,
-                        text: p.goal,
-                        mode,
-                      }),
-                    },
-                  );
-                  follow(execution, true);
-                });
-              }}
-            >
-              <WorkspaceArtwork kind="build" />
-              <h2>Describe what you want to build.</h2>
-              <p>
-                Discuss the users, workflows, data, design, integrations and
-                deployment needs. Confirm suggested requirements before
-                implementation.
-              </p>
-              <label>
-                Product name
-                <input
-                  name="name"
-                  aria-label="AI product name"
-                  required
-                  minLength={2}
-                  maxLength={100}
-                  placeholder="Your product name"
-                />
-              </label>
-              <label>
-                Your idea
-                <textarea
-                  name="goal"
-                  aria-label="AI product goal"
-                  required
-                  minLength={5}
-                  maxLength={2000}
-                  placeholder="Describe the product and the business problem it solves…"
-                />
-              </label>
-              <button className="studio-primary" disabled={busy}>
-                Discuss with the requirements agent{" "}
-                <UiIcon name="arrow-up" size={17} />
-              </button>
-            </form>
-          ) : (
-            <>
-              <div className="product-conversation-scroll">
-                <article className="product-chat user">
-                  <small>Your product goal</small>
-                  <p>{product.goal}</p>
-                </article>
+          <div className="product-conversation-scroll" aria-live="polite">
+            {restoring ? (
+              <p role="status">Restoring your product workspace…</p>
+            ) : !product ? (
+              <div className="product-chat-welcome">
+                <span className="product-welcome-symbol">
+                  <UiIcon name="code" size={32} />
+                </span>
+                <h2>What would you like to build?</h2>
+                <p>
+                  Start with your idea. Your agents will propose a setup, ask
+                  questions here, and turn your confirmed plan into project
+                  files.
+                </p>
+                <div className="product-idea-examples">
+                  {[
+                    "Build an e-commerce product catalog",
+                    "Create a customer support workspace",
+                    "Build an inventory management app",
+                  ].map((idea) => (
+                    <button key={idea} onClick={() => setText(idea)}>
+                      {idea}
+                      <UiIcon name="arrow-up" size={14} />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
                 {transcript.reverse().map((r) => (
                   <div key={r.id}>
                     <article className="product-chat user">
@@ -352,9 +580,7 @@ export function IntelligentProductStudio({
                         {r.state.toLowerCase().replaceAll("_", " ")}
                       </small>
                       {interviewReply(r) ? (
-                        <ReactMarkdown>
-                          {interviewReply(r)}
-                        </ReactMarkdown>
+                        <ReactMarkdown>{interviewReply(r)}</ReactMarkdown>
                       ) : ["CREATED", "RUNNING"].includes(r.state) ? (
                         <>
                           <p>Requesting a model response…</p>
@@ -367,125 +593,294 @@ export function IntelligentProductStudio({
                         </p>
                       )}
                       {r.state === "FAILED" && interviewReply(r) && (
-                        <p className="error">Requirement proposals were not validated. No changes were saved. {r.error}</p>
+                        <p className="error">
+                          Requirement proposals were not validated. No changes
+                          were saved. {r.error}
+                        </p>
                       )}
                     </article>
                   </div>
                 ))}
+
+                {!transcript.length && (
+                  <article className="product-chat user">
+                    <small>You</small>
+                    <p>{product.goal}</p>
+                  </article>
+                )}
                 {proposal &&
                   Object.keys(proposal.proposed_requirements || {}).length >
                     0 &&
-                  interview.state === "COMPLETED" && (
+                  interview.state === "COMPLETED" &&
+                  !proposalAccepted && (
                     <section className="product-proposal">
-                      <h3>Suggested requirements · review first</h3>
-                      {Object.entries(proposal.proposed_requirements).map(
-                        ([k, v]) => (
-                          <div key={k}>
-                            <strong>{k}</strong>
-                            <pre>{String(v)}</pre>
-                          </div>
-                        ),
-                      )}
+                      <h3>Proposed starting setup</h3>
+                      <p>
+                        Review these suggestions. You can change any choice by
+                        replying in this chat.
+                      </p>
+                      <details>
+                        <summary>
+                          Review{" "}
+                          {Object.keys(proposal.proposed_requirements).length}{" "}
+                          proposed decisions
+                        </summary>
+                        {Object.entries(proposal.proposed_requirements).map(
+                          ([k, v]) => (
+                            <div key={k}>
+                              <strong>{k}</strong>
+                              <pre>{String(v)}</pre>
+                            </div>
+                          ),
+                        )}
+                      </details>
                       <button
+                        className="studio-primary"
                         disabled={
-                          busy ||
-                          interview?.definition?.nodes?.find((n:any)=>n.id==='proposal')?.arguments?.revision !== product.revision ||
-                          product.proposal_history?.some(
-                            (h: any) => h.execution_id === interview.id,
-                          )
+                          running ||
+                          interview?.definition?.nodes?.find(
+                            (n: any) => n.id === "proposal",
+                          )?.arguments?.revision !== product.revision
                         }
                         onClick={() =>
                           act(async () => {
-                            const p = await api.json(
-                              "/studio/products/" +
-                                product.id +
-                                "/proposals/" +
-                                interview.id +
-                                "/accept",
-                              {
-                                method: "POST",
-                                body: JSON.stringify({
-                                  spec_id: product.id,
-                                  revision: product.revision,
-                                }),
-                              },
-                            );
-                            setProduct(p);
-                            setNotice(
-                              "Your reviewed requirements were saved as revision " +
-                                p.revision +
-                                ".",
-                            );
-                            await catalog();
+                            if (completeProposal || product.ready)
+                              await confirmPlan();
+                            else {
+                              const p = await api.json(
+                                "/studio/products/" +
+                                  product.id +
+                                  "/proposals/" +
+                                  interview.id +
+                                  "/accept",
+                                {
+                                  method: "POST",
+                                  body: JSON.stringify({
+                                    spec_id: product.id,
+                                    revision: product.revision,
+                                  }),
+                                },
+                              );
+                              setProduct(p);
+                              await catalog();
+                              setNotice(
+                                "Decisions saved. Continue in chat to finish the proposed setup.",
+                              );
+                            }
                           })
                         }
                       >
-                        Confirm proposed requirements
+                        {completeProposal || product.ready
+                          ? "Confirm setup & start building"
+                          : "Confirm proposed requirements"}
                       </button>
                     </section>
                   )}
-                <div ref={bottom} />
-              </div>
-              <form
-                className="product-conversation-composer"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  act(async () => {
-                    const r = await api.json(
-                      "/studio/products/" + product.id + "/messages",
-                      {
-                        method: "POST",
-                        body: JSON.stringify({
-                          spec_id: product.id,
-                          revision: product.revision,
-                          text,
-                          mode,
-                        }),
-                      },
-                    );
-                    setText("");
-                    follow(r, true);
-                  });
-                }}
-              >
-                <textarea
-                  aria-label="Message product agents"
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  placeholder="Ask a question or refine your product requirements…"
-                  required
-                  maxLength={2000}
-                />
-                <button
-                  className="studio-primary"
-                  disabled={running || !text.trim()}
+                {product.ready && !run && !running && (
+                  <article className="product-chat assistant">
+                    <p>
+                      Your setup is confirmed. Start the development agents to
+                      produce the folder plan, PRD, architecture and source
+                      proposal.
+                    </p>
+                    <button
+                      className="studio-primary"
+                      onClick={() => act(() => startBuild(product))}
+                    >
+                      Start building
+                    </button>
+                  </article>
+                )}
+                {run && (
+                  <section
+                    className="product-run-feed"
+                    aria-label="Build activity"
+                  >
+                    <h3>
+                      <UiIcon name="git-branch" size={18} /> {status}
+                    </h3>
+                    <ProductFlow run={run} />
+                    {(run.events || [])
+                      .slice(-4)
+                      .map((event: any, i: number) => (
+                        <p key={i}>
+                          <small>{event.stage}</small> {event.detail}
+                        </p>
+                      ))}
+                    {run.state === "RUNNING" && run.output && (
+                      <details>
+                        <summary>Current agent output</summary>
+                        <pre>{run.output}</pre>
+                      </details>
+                    )}
+                    {run.state === "FAILED" && (
+                      <p className="error" role="alert">
+                        {run.error}
+                      </p>
+                    )}
+                    {contracts?.can_build === false && (
+                      <div role="alert">
+                        <p>
+                          The reviewer requested changes:{" "}
+                          {contracts.review?.summary}. Revise the scope in chat
+                          before rebuilding.
+                        </p>
+                        <ul>
+                          {contracts.review?.issues?.map(
+                            (issue: string, i: number) => (
+                              <li key={i}>{issue}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    {!!Object.keys(sourceFiles).length && (
+                      <button
+                        onClick={() => {
+                          setArtifactsOpen(true);
+                          setTab("source");
+                        }}
+                      >
+                        Open{" "}
+                        {build?.files
+                          ? "generated files"
+                          : "planned folder structure"}{" "}
+                        · {Object.keys(sourceFiles).length} paths
+                      </button>
+                    )}
+                    {build?.state === "READY" && (
+                      <button
+                        onClick={() => {
+                          setArtifactsOpen(true);
+                          setTab("preview");
+                        }}
+                      >
+                        Open working data prototype
+                      </button>
+                    )}
+                    {["FAILED", "CANCELLED", "COMPLETED"].includes(run.state) &&
+                      product.ready &&
+                      !running && (
+                        <button onClick={() => act(() => startBuild(product))}>
+                          Run product agents again
+                        </button>
+                      )}
+                  </section>
+                )}
+                {pending && run?.state === "WAITING_FOR_APPROVAL" && (
+                  <div className="product-implementation-approval">
+                    <h3>Approve this source implementation?</h3>
+                    <p>
+                      These exact product requirements and blueprint will
+                      generate a versioned source artifact. This does not
+                      deploy, publish or spend.
+                    </p>
+                    <details>
+                      <summary>Exact approved arguments</summary>
+                      <pre>{JSON.stringify(pending.arguments, null, 2)}</pre>
+                    </details>
+                    <button
+                      className="studio-primary"
+                      disabled={busy}
+                      onClick={() =>
+                        act(async () => {
+                          const r = await api.json(
+                            "/harness/executions/" + run.id + "/decision",
+                            {
+                              method: "POST",
+                              body: JSON.stringify({
+                                approve: true,
+                                binding: pending.binding,
+                              }),
+                            },
+                          );
+                          follow(r, false);
+                        })
+                      }
+                    >
+                      Approve source implementation
+                    </button>
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        act(async () => {
+                          setRun(
+                            await api.json(
+                              "/harness/executions/" + run.id + "/decision",
+                              {
+                                method: "POST",
+                                body: JSON.stringify({
+                                  approve: false,
+                                  binding: pending.binding,
+                                }),
+                              },
+                            ),
+                          );
+                        })
+                      }
+                    >
+                      Reject
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+            <div ref={bottom} />
+          </div>
+          <form
+            className="product-conversation-composer"
+            onSubmit={(e) => {
+              e.preventDefault();
+              act(send);
+            }}
+          >
+            <textarea
+              aria-label="Message product agents"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder={
+                product
+                  ? "Ask a question or refine your product…"
+                  : "Describe the product you want to build…"
+              }
+              required
+              minLength={product ? 1 : 5}
+              maxLength={2000}
+            />
+            <div className="product-composer-bottom">
+              <ToolAccess api={api} onManage={onManage} />
+              <label className="product-route">
+                <span className="sr-only">Agent model route</span>
+                <select
+                  aria-label="Product agent model route"
+                  value={mode}
+                  onChange={(e) => setMode(e.target.value)}
                 >
-                  <UiIcon name="arrow-up" size={18} />
-                  Send
-                </button>
-              </form>
-            </>
-          )}
-          <label className="product-route">
-            Agent model route
-            <select
-              aria-label="Product agent model route"
-              value={mode}
-              onChange={(e) => setMode(e.target.value)}
-            >
-              <option value="default">Vault / per-agent routes</option>
-              <option value="local">Local model</option>
-              <option value="gemini">Gemini · vault credential</option>
-              <option value="groq">Groq · vault credential</option>
-              <option value="provider">OpenAI · vault credential</option>
-            </select>
-          </label>
+                  <option value="default">Workspace model</option>
+                  <option value="local">Local model</option>
+                  <option value="gemini">Gemini · vault key</option>
+                  <option value="groq">Groq · vault key</option>
+                  <option value="provider">OpenAI · vault key</option>
+                </select>
+              </label>
+              <button
+                className="studio-primary"
+                aria-label="Send to product agents"
+                disabled={
+                  running || restoring || text.trim().length < (product ? 1 : 5)
+                }
+              >
+                <UiIcon name="arrow-up" size={19} />
+                <span className="product-send-label">Send</span>
+              </button>
+            </div>
+          </form>
           <small>
-            Missing provider credentials produce a visible error. No generated
-            conversation or document is substituted.
+            Progress and drafts are saved. Source writes require approval;
+            provider failures are shown here.
           </small>
         </section>
-        <section className="product-deliverables">
+        <section className="product-deliverables" hidden={!artifactsOpen}>
           <nav className="product-deliverable-tabs">
             {[
               "overview",
@@ -590,25 +985,7 @@ export function IntelligentProductStudio({
                   <button
                     className="studio-primary"
                     disabled={!product.ready || running || !agents.length}
-                    onClick={() =>
-                      act(async () => {
-                        const r = await api.json(
-                          "/studio/products/" + product.id + "/agent-build",
-                          {
-                            method: "POST",
-                            body: JSON.stringify({
-                              spec_id: product.id,
-                              revision: product.revision,
-                              mode,
-                              agents,
-                              build_source: buildSource,
-                            }),
-                          },
-                        );
-                        setBuild(null);
-                        follow(r, false);
-                      })
-                    }
+                    onClick={() => act(() => startBuild(product))}
                   >
                     Run product agents <UiIcon name="git-branch" size={17} />
                   </button>
@@ -622,9 +999,10 @@ export function IntelligentProductStudio({
                       act(async () => {
                         const r = await api.json("/executions/" + run.id);
                         setRun(r);
-                        const b = await catalog();
+                        const { builds: b } = await catalog();
                         setBuild(
-                          b.find((v: any) => v.spec_id === product?.id) || null,
+                          b.find((v: any) => v.spec_id === selected.current) ||
+                            null,
                         );
                       })
                     }
@@ -637,7 +1015,12 @@ export function IntelligentProductStudio({
           )}
           {tab === "prd" && (
             <div className="product-workbench-pane markdown">
-              <ProductDocument key={product?.id} api={api} specId={product?.id} generatedText={blueprint?.prd || output(run, "prd")?.text || ""} />
+              <ProductDocument
+                key={product?.id}
+                api={api}
+                specId={product?.id}
+                generatedText={blueprint?.prd || output(run, "prd")?.text || ""}
+              />
             </div>
           )}
           {tab === "architecture" && (
@@ -651,10 +1034,10 @@ export function IntelligentProductStudio({
             </div>
           )}
           {tab === "source" &&
-            (build?.files ? (
+            (Object.keys(sourceFiles).length ? (
               <div className="product-source-workspace">
                 <SourceTree
-                  files={build.files}
+                  files={sourceFiles}
                   selected={file}
                   onSelect={setFile}
                 />
@@ -662,6 +1045,7 @@ export function IntelligentProductStudio({
                   <header>
                     <strong>{file}</strong>
                     <button
+                      disabled={build?.state !== "READY"}
                       onClick={() =>
                         api
                           .download(
@@ -675,12 +1059,16 @@ export function IntelligentProductStudio({
                     </button>
                   </header>
                   <small>
-                    Immutable source snapshot ·{" "}
-                    {Object.keys(build.files).length} files
+                    {build?.files
+                      ? "Source snapshot"
+                      : "Planned paths · contents pending approval"}{" "}
+                    · {Object.keys(sourceFiles).length} files
                   </small>
                   <pre tabIndex={0}>
-                    {build.files[file] ||
-                      "Select a file from the project tree."}
+                    {sourceFiles[file] ||
+                      (build?.files
+                        ? "Select a file from the project tree."
+                        : "Planned file. Source contents will be created after blueprint review and implementation approval.")}
                   </pre>
                 </div>
               </div>
@@ -748,62 +1136,6 @@ export function IntelligentProductStudio({
               ) : (
                 <p>No source build has run yet.</p>
               )}
-            </div>
-          )}
-          {pending && run?.state === "WAITING_FOR_APPROVAL" && (
-            <div className="product-implementation-approval">
-              <h3>Approve this source implementation?</h3>
-              <p>
-                These exact product requirements and blueprint will generate a
-                versioned source artifact. This does not deploy, publish or
-                spend.
-              </p>
-              <details>
-                <summary>Exact approved arguments</summary>
-                <pre>{JSON.stringify(pending.arguments, null, 2)}</pre>
-              </details>
-              <button
-                className="studio-primary"
-                disabled={busy}
-                onClick={() =>
-                  act(async () => {
-                    const r = await api.json(
-                      "/harness/executions/" + run.id + "/decision",
-                      {
-                        method: "POST",
-                        body: JSON.stringify({
-                          approve: true,
-                          binding: pending.binding,
-                        }),
-                      },
-                    );
-                    follow(r, false);
-                  })
-                }
-              >
-                Approve source implementation
-              </button>
-              <button
-                disabled={busy}
-                onClick={() =>
-                  act(async () => {
-                    setRun(
-                      await api.json(
-                        "/harness/executions/" + run.id + "/decision",
-                        {
-                          method: "POST",
-                          body: JSON.stringify({
-                            approve: false,
-                            binding: pending.binding,
-                          }),
-                        },
-                      ),
-                    );
-                  })
-                }
-              >
-                Reject
-              </button>
             </div>
           )}
           {run?.state === "FAILED" && (

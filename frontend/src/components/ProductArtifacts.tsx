@@ -135,6 +135,7 @@ export function ProductFlow({ run }: { run: any }) {
   const checkpoint = run?.graph_checkpoint || {};
   const labels: Record<string, string> = {
     requirements: "Approved requirements",
+    file_plan: "Project folder plan",
     interview: "Requirements analyst",
     proposal: "Validated proposal",
     prd: "PRD · Product manager",

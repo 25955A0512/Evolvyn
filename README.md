@@ -199,7 +199,11 @@ Latest experience acceptance: **138 tests passed**, including isolated support-p
 
 ## Product development workspace
 
-Open **Build a product** to discuss requirements with the model, confirm its proposals, enable specialist phases, inspect the PRD/architecture, and approve a source build. **Source tree**, **Prototype**, and **Build results** show different stages explicitly. The existing **Guided form · no model** remains available. Supported source adapters implement private accounts and entity CRUD; requested domain features and integrations remain listed as pending until separately implemented and verified. Builds do not automatically deploy a live application.
+Open **Build a product** and type your idea in the full-width conversation. No name form or initial questionnaire is required. The model proposes a starting setup for review and asks follow-up questions in that chat. **Confirm setup & start building** saves the reviewed decisions and starts the durable backend workflow in the same request. The planned folder pane opens as the agents work; phase results, review issues and source approval appear in the conversation. Leaving the module does not cancel the job: returning or refreshing restores the selected product, history, files and current execution. **Source tree**, **Prototype**, and **Build results** show different stages explicitly. A reviewer rejection stops source creation until the plan or selected workflow is revised. **Options → Guided form · no model** remains available. Supported source adapters implement private accounts and entity CRUD; requested domain features and integrations remain listed as pending until separately implemented and verified. Builds do not automatically deploy a live application.
+
+![Product Studio starts as a conversation](docs/screenshots/product-conversation.png)
+
+![Generated source from synthetic local-model acceptance](docs/screenshots/product-source-workspace.png)
 
 The private compiler container validates frontend bundles without executing generated application code. When updating an existing checkout, run `python scripts/prepare_deployment.py` before rebuilding containers so its private authorization token is created. Never replace or delete an existing deployment environment or vault key.
 

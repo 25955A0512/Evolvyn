@@ -65,6 +65,7 @@ class BuildState(TypedDict):
 def next_question(spec):
     return next(({'field':key,'question':question,'suggested_answer':suggestion} for key,question,suggestion in QUESTIONS if key not in spec['requirements']),None)
 def parsed_answer(field,text):
+    if not text.strip():raise HTTPException(422,'Requirement decisions cannot be empty')
     if len(text)>8000:raise HTTPException(422,'Requirement answer is too long')
     reject_secrets(text)
     if field=='entities':
@@ -78,7 +79,10 @@ def parsed_answer(field,text):
     if field=='stack' and len(text)>150:raise HTTPException(422,'Stack choice is too long')
     if field=='authentication' and text!='private_accounts':raise HTTPException(422,'Verified adapters currently implement private_accounts; custom auth requires a separate adapter')
     if field=='privacy' and text not in ('internal','confidential','public'):raise HTTPException(422,'Choose internal, confidential or public')
-    if field in ('features','integrations'):return [part.strip() for part in re.split(r'[,\n]',text) if part.strip()][:20]
+    if field in ('features','integrations'):
+        values=[part.strip() for part in re.split(r'[,\n]',text) if part.strip()][:20]
+        if not values:raise HTTPException(422,'Supply a requirement or explicitly state none')
+        return values
     return text.strip()
 
 class Studio:
@@ -125,6 +129,7 @@ class Studio:
             record['blueprint']=blueprint
             if record['state']=='READY':
                 from backend.source_compiler import compile_frontend
+                self.save(owner,'product_build',{**record,'state':'BUILDING'},id_build)
                 compiled=await compile_frontend(record['files']);record['frontend_build']=compiled
                 if compiled['status']=='failed':record.update(state='FAILED',error='Frontend compilation failed; the source was retained for inspection')
                 elif compiled['status']=='passed':record['validation_scope']='Frontend compiled in the isolated compiler service; backend syntax and contracts validated. No application runtime or cloud deployment was started.'

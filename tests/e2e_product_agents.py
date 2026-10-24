@@ -49,13 +49,14 @@ with sync_playwright() as pw:
     studio.get_by_label('Product agent model route',exact=True).select_option('local')
     # This acceptance case deliberately uses three enabled agents plus human review.
     # Reviewer rejection is covered separately and must never be overridden automatically.
+    if studio.get_by_role('button',name='Open workspace',exact=True).is_visible():studio.get_by_role('button',name='Open workspace',exact=True).click()
     studio.get_by_label('Enable Quality reviewer',exact=True).uncheck()
     studio.get_by_role('button',name='Run product agents',exact=False).click()
     studio.get_by_role('button',name='Approve source implementation',exact=True).wait_for(timeout=330000)
     page.screenshot(path=str(out/'product-agents-approval.png'))
     expect(studio.locator('.product-implementation-approval')).to_contain_text('exact')
     studio.get_by_role('button',name='Approve source implementation',exact=True).click()
-    studio.get_by_text('Source ready · runtime not started',exact=True).wait_for(timeout=90000)
+    studio.get_by_text('Source ready · runtime not started',exact=True).first.wait_for(timeout=90000)
     studio.get_by_role('button',name='Architecture',exact=True).click()
     expect(studio.locator('.architecture-diagram svg')).to_be_visible()
     page.screenshot(path=str(out/'product-agents-architecture.png'))
@@ -79,6 +80,7 @@ with sync_playwright() as pw:
     page.locator('.agent-workspace').wait_for()
     studio=page.locator('.intelligent-product-studio')
     studio.get_by_label('Agent product',exact=True).select_option(product['id'])
+    if studio.get_by_role('button',name='Open workspace',exact=True).is_visible():studio.get_by_role('button',name='Open workspace',exact=True).click()
     studio.get_by_role('button',name='Prototype',exact=True).click()
     expect(studio.locator('.prototype-records')).to_contain_text('Synthetic support request')
     page.set_viewport_size({'width':390,'height':844})

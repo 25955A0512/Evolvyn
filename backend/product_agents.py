@@ -7,7 +7,7 @@ from fastapi import Depends,HTTPException
 from pydantic import BaseModel,ConfigDict,Field,model_validator
 from backend.registry import Tool
 from backend.graph_harness import Definition
-from backend.product_studio import QUESTIONS,parsed_answer,next_question
+from backend.product_studio import QUESTIONS,parsed_answer,next_question,Entity
 from backend.agent_memory import reject_secrets
 
 class Strict(BaseModel):model_config=ConfigDict(extra='forbid')
@@ -17,13 +17,19 @@ class Scope(Strict):
 class Turn(Scope):
     text:str=Field(min_length=1,max_length=2000)
     mode:Literal['default','local','provider','groq','gemini','openrouter']='default'
+    intent:Literal['chat','plan']='chat'
 class Pipeline(Scope):
     mode:Literal['default','local','provider','groq','gemini','openrouter']='default'
     agents:list[Literal['prd','architecture','developer','reviewer']]=Field(default_factory=lambda:['prd','architecture','developer','reviewer'],min_length=1,max_length=4)
     build_source:bool=True
 class Interview(Strict):
     reply:str=Field(min_length=1,max_length=3000)
-    proposed_requirements:dict[str,str]=Field(default_factory=dict,max_length=3)
+    proposed_requirements:dict[str,str]=Field(default_factory=dict,max_length=11)
+class ProductPlan(Interview):
+    reply:str=Field(min_length=1,max_length=600)
+class FilePlan(Strict):
+    files:list[str]=Field(max_length=512)
+    scope:str
 class DiagramNode(Strict):
     id:str=Field(pattern=r'^[a-z][a-z0-9_]{0,19}$')
     label:str=Field(min_length=1,max_length=70)
@@ -47,7 +53,7 @@ class Experience(Strict):
     description:str=Field(min_length=1,max_length=700)
     sections:list[Section]=Field(default_factory=list,max_length=4)
 class Review(Strict):
-    approved:bool
+    approved:bool=Field(description="Design consistency only; never permission to execute. Source writes still require human approval.")
     summary:str=Field(min_length=1,max_length=1500)
     issues:list[str]=Field(default_factory=list,max_length=10)
 class TextResult(BaseModel):
@@ -59,6 +65,7 @@ class ParseInterview(Strict):
     spec_id:str
     revision:int
     text:str=Field(max_length=16000)
+    plan:bool=False
 class Contracts(Scope):
     prd:str=Field(default='',max_length=16000)
     architecture:str=Field(default='',max_length=16000)
@@ -93,11 +100,22 @@ def response_schema(model):
             return {key:inline(item) for key,item in value.items()}
         return value
     schema=inline(schema)
-    if model is Interview:
-        schema['properties']['proposed_requirements']={'type':'object','properties':{key:{'type':'string'} for key,_,_ in QUESTIONS},'additionalProperties':False,'maxProperties':2}
+    if model in (Interview,ProductPlan):
+        schema['properties']['proposed_requirements']={'type':'object','properties':{key:{'type':'string'} for key,_,_ in QUESTIONS},'additionalProperties':False,'maxProperties':11 if model is ProductPlan else 2}
         fields=schema['properties']['proposed_requirements']['properties']
         for key,values in {'theme':['light','dark'],'stack':['react_fastapi','react_express','custom'],'authentication':['private_accounts'],'privacy':['internal','confidential','public']}.items():fields[key]['enum']=values
         fields['accent']['pattern']='^#[0-9a-fA-F]{6}$'
+        if model is ProductPlan:
+            proposal=schema['properties']['proposed_requirements']
+            proposal['required']=[key for key,_,_ in QUESTIONS]
+            for value in fields.values():value['minLength']=1
+            for key in ('audience','features','integrations','acceptance','deployment'):fields[key]['maxLength']=140
+            fields['entities']={'type':'array','items':response_schema(Entity),'minItems':1,'maxItems':6}
+            # Emit the actionable setup before explanation; this keeps compact
+            # local-model budgets from being spent on prose and an empty plan.
+            reply={**schema['properties']['reply'],'maxLength':180}
+            schema['properties']={'proposed_requirements':proposal,'reply':reply}
+            schema['required']=['proposed_requirements','reply']
     if model is Architecture:
         # Match the actual supported three-tier adapter and fit the per-agent
         # output budget. An oversized graph must not be truncated into a build.
@@ -156,11 +174,29 @@ class ProductAgents:
         conversation_text=json.dumps([{'role':m['role'],'text':m['text'][:2000]} for m in messages[-6:]])
         return {'facts':[],'evidence':[{'source':'User-approved requirements','citation':'product:'+spec['id']+':'+str(spec['revision']),'excerpt':text}],'requirements_text':text,'conversation_text':conversation_text}
     async def parse_interview(self,args,context):
-        self.spec(context.owner,args.spec_id,args.revision);parsed=decoded(args.text,Interview)
+        self.spec(context.owner,args.spec_id,args.revision)
+        text=args.text
+        if args.plan:
+            # Model planning uses a typed entity array rather than asking the LLM
+            # to double-escape nested JSON. Normalize into the existing reviewed
+            # proposal contract; parsed_answer still validates every entity.
+            reject_secrets(text)
+            value=json.loads(re.sub(r'^\s*```(?:json)?\s*|\s*```\s*$','',text.strip()))
+            proposed=value.get('proposed_requirements',{})
+            if isinstance(proposed.get('entities'),list):proposed['entities']=json.dumps(proposed['entities'])
+            text=json.dumps(value)
+        parsed=decoded(text,Interview)
         known={key for key,_,_ in QUESTIONS}
         if not set(parsed.proposed_requirements)<=known:raise ValueError('Unknown requirement proposal')
         for key,value in parsed.proposed_requirements.items():parsed_answer(key,value)
         return parsed.model_dump()
+    async def file_plan(self,args,context):
+        spec=self.spec(context.owner,args.spec_id,args.revision)
+        if next_question(spec):raise HTTPException(422,'Confirm the proposed setup before planning source')
+        if spec['requirements']['stack'] not in ('react_fastapi','react_express'):return {'files':[],'scope':'Custom stack: architecture only; no verified source adapter'}
+        from backend.product_templates import generate
+        files=sorted(generate({**spec['requirements'],'name':spec['name'],'goal':spec['goal']}))
+        return {'files':files,'scope':'Planned paths from the selected source adapter. No source artifact is saved by this planning step; agent documents may add files.'}
     async def contracts(self,args,context):
         self.spec(context.owner,args.spec_id,args.revision)
         result={'prd':args.prd,'architecture':decoded(args.architecture,Architecture).model_dump() if args.architecture else None,'experience':decoded(args.developer,Experience).model_dump() if args.developer else None,'review':decoded(args.reviewer,Review).model_dump() if args.reviewer else None}
@@ -185,14 +221,19 @@ class ProductAgents:
           ('read_product_requirements',Scope,TextResult,self.requirements,'read'),
           ('parse_product_interview',ParseInterview,Interview,self.parse_interview,'read'),
           ('validate_product_blueprint',Contracts,Blueprint,self.contracts,'read'),
+          ('plan_product_source',Scope,FilePlan,self.file_plan,'read'),
           ('implement_product_blueprint',Implement,Built,self.implement,'internal_write')]:
             s['REGISTRY'].register(Tool(name,name.replace('_',' '),model,out,handler,permission='workspace.write' if risk!='read' else 'workspace.read',risk=risk,timeout=90))
         def base(spec,goal):return {'name':goal[:100],'goal':goal[:2000],'entry':'requirements','nodes':[{'id':'requirements','type':'tool','tool':'read_product_requirements','arguments':{'spec_id':spec['id'],'revision':spec['revision']}}],'edges':[],'max_seconds':600,'max_output_tokens':4096,'max_tool_calls':5,'max_steps':12}
         def report(evidence=None):return {'facts':[],'evidence':evidence or [{'source':'Confirmed requirements','citation':'product requirements','excerpt':{'$ref':'nodes.requirements.output.requirements_text'}}]}
         def agent(id,role,prompt,mode,evidence=None):
-            models={'interview':Interview,'architecture':Architecture,'developer':Experience,'reviewer':Review}
+            models={'interview':Interview,'planner':ProductPlan,'architecture':Architecture,'developer':Experience,'reviewer':Review}
             context=report(evidence)
-            if id in models:context['_response_schema']=response_schema(models[id])
+            if id in models:
+                schema=response_schema(models[id])
+                # JSON Schema is opaque data, not graph argument references.
+                if id=='planner':context['_response_schema_json']=json.dumps(schema)
+                else:context['_response_schema']=schema
             return {'id':id,'type':'agent','agent_id':role,'prompt':prompt,'mode':mode,'timeout_seconds':90,'arguments':{'report':context}}
         def connect(definition):definition['edges']=[{'source':a['id'],'target':b['id']} for a,b in zip(definition['nodes'],definition['nodes'][1:])]
         @app.post('/api/studio/products/{id}/messages',status_code=202)
@@ -200,7 +241,13 @@ class ProductAgents:
             if id!=body.spec_id:raise HTTPException(422,'Product scope mismatch')
             reject_secrets(body.text);spec=self.spec(owner,id,body.revision);d=base(spec,body.text)
             prompt='PRODUCT_INTERVIEW_JSON. Current user message: '+body.text[:800]+'. Speak directly to this product owner: answer their message and ask one focused question about a missing decision. Return JSON with reply containing your actual conversational answer, and proposed_requirements containing at most two decisions explicitly supplied by the user. Use an empty object if none. Never repeat these instructions as your reply. Allowed proposal keys: '+','.join(k for k,_,_ in QUESTIONS)+'. Stack values react_fastapi/react_express/custom; theme light/dark; accent #rrggbb; authentication private_accounts; privacy internal/confidential/public. Do not guess unconfirmed values or claim implementation. The confirmed snapshot and original goal are attached.'
-            d['nodes'] += [agent('interview','product_manager',prompt[:2000],body.mode,[*report()['evidence'],{'source':'Prior discussion','citation':'product conversation','excerpt':{'$ref':'nodes.requirements.output.conversation_text'}}]),{'id':'proposal','type':'tool','tool':'parse_product_interview','arguments':{'spec_id':id,'revision':body.revision,'text':{'$ref':'nodes.interview.output.text'}}}]
+            if body.intent=='plan':
+                prompt='PRODUCT_PLAN_JSON. Latest user message: '+body.text[:300]+'. Propose a COMPLETE practical first version using the goal and prior discussion. Return {reply,proposed_requirements}. Speak naturally; unspecified choices are suggestions awaiting confirmation. Ask at most one critical question, not a questionnaire. Include all missing keys: audience, stack, theme, accent, features, entities, authentication, privacy, integrations, acceptance, deployment. Values are short strings; use None for no integrations. Return compact JSON on one line. stack react_fastapi/react_express (custom only if requested); theme light/dark; accent #rrggbb; authentication private_accounts; privacy internal/confidential/public. entities: array [{name,label,fields:[{name,label,type}]}], one product-specific entity, two fields, snake_case names, type text/number/email/date. features/integrations: comma-separated. Reply in one short sentence under 120 characters; total JSON under 500 tokens. Retain confirmed choices unless asked to change. Adapter supports accounts and entity CRUD; advanced features/integrations/deployment are pending, never claim them working.'
+            node=agent('planner' if body.intent=='plan' else 'interview','product_manager',prompt[:2000],body.mode,[*report()['evidence'],{'source':'Prior discussion','citation':'product conversation','excerpt':{'$ref':'nodes.requirements.output.conversation_text'}},{'source':'Latest user message','citation':'current product message','excerpt':body.text}])
+            # Keep the stable interview node ID used by stored history and clients.
+            node['id']='interview'
+            if body.intent=='plan':node['timeout_seconds']=120
+            d['nodes'] += [node,{'id':'proposal','type':'tool','tool':'parse_product_interview','arguments':{'spec_id':id,'revision':body.revision,'text':{'$ref':'nodes.interview.output.text'},'plan':body.intent=='plan'}}]
             connect(d);return await self.graph(owner,spec,d)
         @app.post('/api/studio/products/{id}/proposals/{execution_id}/accept')
         def accept(id:str,execution_id:str,body:Scope,owner=Depends(auth)):
@@ -224,7 +271,8 @@ class ProductAgents:
             if next_question(spec):raise HTTPException(422,'Confirm the required product decisions before building')
             if body.build_source and spec['requirements']['stack'] not in ('react_fastapi','react_express'):raise HTTPException(422,'This stack supports architecture/PRD drafts only; select a supported source adapter or generate blueprint only')
             d=base(spec,'Build '+spec['name']+' from approved requirements');selected=set(body.agents)
-            prompts={'prd':('product_manager','PRODUCT_PRD. Write a concise project-specific PRD in Markdown: problem, users, core workflows, acceptance criteria, integration dependencies and unresolved risks. Only approved scope; do not claim features already implemented.'),'architecture':('architect','PRODUCT_ARCHITECTURE_JSON. Design the proposed architecture for THIS confirmed product. Return JSON with nodes (objects with id and label), edges (objects with source and target node IDs), and notes describing actual boundaries. Use exactly three nodes with IDs web, api, db. Label them with the confirmed frontend framework, backend framework, and PostgreSQL. Use exactly two edges: web to api, and api to db. Notes must describe private-account and owner-data boundaries. Keep all text brief. Connected components are proposed architecture, not proof of a deployed service. No invented live integrations. Do not repeat these instructions as node labels or notes.'),'developer':('developer','PRODUCT_EXPERIENCE_JSON. Design the actual product interface copy from its approved purpose, not a generic task app. Return only JSON with a product-specific headline, description, and sections (objects with heading and text). Write the actual interface copy, not descriptions of these fields. Maximum 3 sections. The verified adapter implements accounts and entity CRUD; describe unsupported integrations as requirements, not working features. No executable code or fictional business outcomes.'),'reviewer':('reviewer','PRODUCT_REVIEW_JSON. Review the proposed interface against approved requirements. Return only JSON with approved (a boolean decision), summary (your actual specific review), and issues (an array of specific unresolved issues, empty if none). Do not copy instructions or generic field descriptions into the result. This is a source-design review, not executed tests or deployment. Mark approved false only for a contradictory/unsafe design; list remaining domain-specific implementation work as issues.')}
+            if body.build_source:d['nodes'].append({'id':'file_plan','type':'tool','tool':'plan_product_source','arguments':{'spec_id':id,'revision':spec['revision']}})
+            prompts={'prd':('product_manager','PRODUCT_PRD. Write a concise project-specific PRD in Markdown: problem, users, core workflows, acceptance criteria, integration dependencies and unresolved risks. Only approved scope; do not claim features already implemented.'),'architecture':('architect','PRODUCT_ARCHITECTURE_JSON. Design the proposed architecture for THIS confirmed product. Return JSON with nodes (objects with id and label), edges (objects with source and target node IDs), and notes describing actual boundaries. Use exactly three nodes with IDs web, api, db. Label them with the confirmed frontend framework, backend framework, and PostgreSQL. Use exactly two edges: web to api, and api to db. Notes must describe private-account and owner-data boundaries. Keep all text brief. Connected components are proposed architecture, not proof of a deployed service. No invented live integrations. Do not repeat these instructions as node labels or notes.'),'developer':('developer','PRODUCT_EXPERIENCE_JSON. Design the actual product interface copy from its approved purpose, not a generic task app. Return only JSON with a product-specific headline, description, and sections (objects with heading and text). Write the actual interface copy, not descriptions of these fields. Maximum 3 sections. The verified adapter implements accounts and entity CRUD; describe unsupported integrations as requirements, not working features. No executable code or fictional business outcomes.'),'reviewer':('reviewer','PRODUCT_REVIEW_JSON. Review the proposed interface against approved requirements. Return only JSON with approved (a boolean decision), summary (your actual specific review), and issues (an array of specific unresolved issues, empty if none). Do not copy instructions or generic field descriptions into the result. This is a source-design review, not executed tests or deployment. Here approved means design consistency, not permission to execute: true still pauses for human source approval. Mark false only for a concrete contradiction or unsafe design. Internal/confidential privacy is valid for a private application; public launch is not implied. Do not invent public-access or payment requirements. Use a one-sentence summary under 160 characters; list unresolved domain work as issues.')}
             for phase in ('prd','architecture','developer','reviewer'):
                 if phase in selected:
                     role,prompt=prompts[phase];evidence=None
@@ -236,3 +284,15 @@ class ProductAgents:
                 connect(d);d['edges']=[e for e in d['edges'] if e['source'] not in ('review_gate','implementation')]+[{'source':'review_gate','target':'implementation','when':'true'},{'source':'review_gate','target':'changes_needed','when':'false'}]
             else:connect(d)
             return await self.graph(owner,spec,d)
+
+        @app.post('/api/studio/products/{id}/proposals/{execution_id}/confirm-and-build',status_code=202)
+        async def confirm_and_build(id:str,execution_id:str,body:Pipeline,owner=Depends(auth)):
+            # Existing acceptance persists the reviewed revision; the durable graph
+            # starts in this request, without depending on a mounted browser view.
+            updated=accept(id,execution_id,Scope(spec_id=body.spec_id,revision=body.revision),owner)
+            if not updated['ready']:return {'product':updated,'execution':None,'launch_error':'Some decisions are missing. Continue in chat to complete the setup.'}
+            try:
+                execution=await pipeline(id,body.model_copy(update={'revision':updated['revision']}),owner)
+                return {'product':updated,'execution':execution}
+            except HTTPException as error:
+                return {'product':updated,'execution':None,'launch_error':str(error.detail)}

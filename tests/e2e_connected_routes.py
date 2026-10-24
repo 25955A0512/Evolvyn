@@ -25,13 +25,13 @@ with sync_playwright() as pw:
   response=page.request.get(base+'/api'+path);assert response.ok,(path,response.status);return response.json()
  def post(path,body,method='POST'):
   response=page.request.fetch(base+'/api'+path,method=method,data=body,headers=headers);assert response.ok,(path,response.status,response.text()[:300]);return response.json()
- for route,text in [('/product-studio','Build your next business product.'),('/discussionroom','Think it through with your team.'),('/keyvault','One default. The right key for every agent.'),('/mcp-registry','Connect your agent tools.'),('/monitoring','Keep the loop running'),('/workflows','Inside the workflow'),('/integrations','Connect GitHub to Evolvyn'),('/team-settings','Account & team'),('/audit-logs','Workspace audit logs')]:
+ for route,text in [('/product-studio','New product conversation'),('/discussionroom','Think it through with your team.'),('/keyvault','One default. The right key for every agent.'),('/mcp-registry','Connect your agent tools.'),('/monitoring','Keep the loop running'),('/workflows','Inside the workflow'),('/integrations','Connect GitHub to Evolvyn'),('/team-settings','Account & team'),('/audit-logs','Workspace audit logs')]:
   page.goto(base+route);page.get_by_role('heading',name=text,exact=True).wait_for(timeout=20000)
   page.reload();page.get_by_role('heading',name=text,exact=True).wait_for(timeout=20000)
   assert page.url==base+route
  page.goto(base+'/product-studio')
  page.locator('.agent-workspace').get_by_role('button',name='Key vault',exact=True).click();page.wait_for_url(base+'/keyvault')
- page.go_back();page.get_by_role('heading',name='Build your next business product.',exact=True).wait_for()
+ page.go_back();page.get_by_role('heading',name='New product conversation',exact=True).wait_for()
  page.goto(base+'/integrations');page.get_by_role('button',name='Connect GitHub',exact=True).click()
  expect(page.locator('.oauth-setup')).to_contain_text('OAUTH_GITHUB_CLIENT_ID')
  page.screenshot(path=str(out/'github-oauth-setup.png'))
@@ -46,6 +46,7 @@ with sync_playwright() as pw:
  product=post('/studio/products',{'name':'Synthetic PRD workspace','goal':'An e-commerce clothing catalog and order tracker'})
  page.goto(base+'/product-studio')
  page.get_by_label('Agent product',exact=True).select_option(product['id'])
+ page.get_by_role('button',name='Open workspace',exact=True).click()
  page.get_by_role('button',name='PRD',exact=True).click()
  page.get_by_role('button',name='Edit PRD draft',exact=True).click()
  page.get_by_label('PRD draft',exact=True).fill('# Clothing storefront\nUsers browse clothing and track orders.\nAcceptance: private accounts and persisted orders.')
@@ -54,7 +55,7 @@ with sync_playwright() as pw:
  with page.expect_download() as download:page.get_by_role('button',name='Download PRD · DOCX',exact=True).click()
  path=out/'synthetic-prd.docx';download.value.save_as(path)
  with zipfile.ZipFile(path) as doc:assert b'Users browse clothing' in doc.read('word/document.xml')
- page.reload();page.get_by_label('Agent product',exact=True).select_option(product['id']);page.get_by_role('button',name='PRD',exact=True).click()
+ page.reload();expect(page.get_by_label('Agent product',exact=True)).to_have_value(product['id']);page.get_by_role('button',name='Open workspace',exact=True).click();page.get_by_role('button',name='PRD',exact=True).click()
  expect(page.locator('.product-workbench-pane')).to_contain_text('Clothing storefront')
  page.screenshot(path=str(out/'editable-prd-docx.png'))
  page.set_viewport_size({'width':1050,'height':950})
