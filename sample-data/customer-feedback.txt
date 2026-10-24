@@ -1,0 +1,16 @@
+SYNTHETIC DEMONSTRATION DATA — NOT A REAL COMPANY
+
+Business: Northstar Tasks, a small project management SaaS.
+Goal: improve paid conversion without harming retention.
+
+Customer interview notes, demonstration sample:
+- Participant A reported that the onboarding checklist was confusing and asked why a card was required before the first project could be created.
+- Participant B reported that the activation screen froze after inviting a teammate.
+- Participant C said the product was useful after onboarding, but getting to the first successful project took too long.
+- Participant D wanted a clearer explanation of pricing limits before starting a trial.
+
+Known limitations:
+These four synthetic interviews do not establish population-level sentiment or causality. No controlled experiment has run. Funnel data is supplied separately in funnel.csv.
+
+Suggested investigation:
+Validate event definitions and interview real consenting users before considering a reversible onboarding experiment. Do not contact anyone, send campaigns or deploy changes based on this sample.

@@ -1,0 +1,12 @@
+# Execution runtime
+The UI starts a background run using POST /api/conversations/{id}/runs. A conversation row lock prevents concurrent runs in the same conversation. At most four in-process jobs run concurrently. The API immediately returns a persisted CREATED execution.
+
+The worker loads authorized evidence, ranks text passages, calculates structured observations, supplies bounded history and business context, streams configured-provider output or explicitly selected deterministic evidence, and persists WAITING_FOR_APPROVAL. It does not execute any business action until the separate approval transaction. Approval creates a real internal brief and COMPLETED state; rejection records CANCELLED.
+
+GET /api/executions/{id}/live streams updated persisted snapshots as SSE, including actual execution events and accumulated output. The UI consumes those updates and can reconnect to a running execution after reopening a conversation. The provider adapter consumes real OpenAI deltas; deterministic mode emits its computed response as one chunk and is not represented as model streaming.
+
+Cancellation writes CANCELLED under a row lock and cancels the in-process task. Later worker updates cannot transition a terminal state back to approval. Remote runs have a 45-second overall timeout; local runs have a 150-second timeout. Narrative output is bounded to 700 remote or 512 local tokens and 16,000 characters; structured strategy output has a separate 1,200-token bound. Local prompts use compact excerpts and two history messages to fit the model context. Inputs are bounded to 10 uploads, 100 reported numerical observations, five retrieved text passages and eight history messages. Failure messages redact upstream internals. A failed provider never silently falls back to evidence mode.
+
+Executions themselves are the PostgreSQL queue. Claims use row locks, a 60-second lease and a global four-run capacity lock. Workers renew leases, reject writes from an old worker, and recover eligible queued/expired work. Completed evidence and strategy reports are reused; interrupted provider text generation restarts. Recovery is limited to two attempts. Graceful shutdown queues unfinished work. Arbitrary loops and implicit consequential execution are not supported. Recurring schedules retain due times in PostgreSQL.
+
+The original synchronous /analyze endpoint and finite /events replay remain supported for compatibility. The frontend uses /runs and /live.

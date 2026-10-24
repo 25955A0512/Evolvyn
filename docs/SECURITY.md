@@ -1,0 +1,13 @@
+# Security controls and limits
+
+Accounts use salted scrypt password hashes and revocable, SHA-256-indexed HttpOnly/SameSite session cookies. Organization memberships enforce owner/admin/editor/viewer boundaries on the backend. Viewers cannot mutate records; editors cannot approve actions or administer membership. Organization IDs supplied by a client are checked against membership. The development bearer token and expiring isolated sample sessions remain separate access paths. Sample sessions cannot consume remote provider credentials.
+
+Cookie mutations require the application header and an allowed Origin. Authentication endpoints are rate limited. Validation errors exclude reflected passwords. Payload-free mutation audit records exclude request bodies and credentials. Business reads filter owner and kind; project-local model policy is checked after resolving workflow templates. More granular per-project membership ACLs are not implemented.
+
+Uploads are size/type/count bounded. PDF/DOCX extraction runs in a CPU/memory/time-limited child with provider environment variables removed. DOCX expansion is limited, files are never executed, and HTML is not rendered. Parser isolation is defense in depth, not proof that malicious documents cannot exploit dependencies. Lexical retrieval preserves source offsets; generated text is not promoted to verified knowledge.
+
+Model destinations and the MCP subprocess/tool are server controlled. Provider errors are redacted. Local model installation and startup verify the official pinned weight hash. Tool inputs/outputs are validated and execution budgets are bounded. Model citations must refer to supplied evidence. Models and documents cannot authorize actions. Approval, brief and task creation are one replay-safe transaction. Prompt injection cannot be eliminated; human review remains necessary.
+
+Compose serves static assets through Nginx with a restrictive CSP, keeps API/database ports private, uses a non-root API user and authenticated PostgreSQL. Existing trusted proxy/CA settings are reused without disabling TLS verification. Deployment secrets and database backups are ignored private files, never image build context. The web port is loopback-only; public deployment requires TLS, COOKIE_SECURE=1, correct origin/host settings and operational review.
+
+Not complete: password reset/email verification/MFA, project-level ACLs, retention/deletion, encryption-at-rest guarantees, formal penetration testing, distributed rate limits and production identity operations. Do not describe this application as audited or production hardened.

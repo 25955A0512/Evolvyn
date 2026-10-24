@@ -1,0 +1,4 @@
+# Business capability model
+Records have UUID identity, owner, kind, JSON body and creation time. Current kinds: business (name, product, goal), conversation (title, goal, messages, file references), document (name, text, conversation), execution (state, events, report, decision), artifact (plan, execution, outcome), research (query, sources, conversation).
+
+Conversion observations contain period, visits, paid, calculated conversion percentage and CSV row source. Evidence excerpts are explicitly unverified and include document ID, start/end character offsets, citation and keyword relevance score. Hypotheses, action plans and success metrics are separate report fields. `GET /api/tools` exposes the initial capability descriptions; it is metadata for fixed handlers, not a dynamic plugin execution gateway.

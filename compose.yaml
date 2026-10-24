@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:17@sha256:b8faeff7712663c2773a190181e1246e37e364b887611c04658c28b44e2408fe
+    environment:
+      POSTGRES_USER: evolvyn
+      POSTGRES_DB: evolvyn
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run scripts/prepare_deployment.py first}
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U evolvyn]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  api:
+    build: .
+    env_file:
+      - path: .local/mcp-secrets.env
+        required: false
+        format: raw
+    environment:
+      APP_ENV: production
+      HTTP_PROXY: ${HTTP_PROXY:-}
+      HTTPS_PROXY: ${HTTPS_PROXY:-}
+      NO_PROXY: localhost,127.0.0.1,db,api
+      DATABASE_URL: postgresql://evolvyn:${POSTGRES_PASSWORD}@db:5432/evolvyn
+      EVOLVYN_ACCESS_TOKEN: ${EVOLVYN_ACCESS_TOKEN}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}
+    extra_hosts:
+      - "${EVOLVYN_PROXY_HOST:-proxy}:${EVOLVYN_PROXY_IP:-127.0.0.1}"
+    volumes:
+      - ./.local/models:/models:ro
+      - ./.local/llama:/runtime:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request,pathlib; urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=3); not pathlib.Path('/models/qwen2.5-1.5b-instruct-q4_k_m.gguf').is_file() or urllib.request.urlopen('http://127.0.0.1:8081/health',timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+  web:
+    build: frontend
+    ports:
+      - 127.0.0.1:3000:80
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  database:

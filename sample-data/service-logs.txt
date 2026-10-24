@@ -1,0 +1,5 @@
+SYNTHETIC DEMONSTRATION LOGS — NOT A CONNECTED PRODUCTION SERVICE
+2026-10-01T09:00:00Z INFO release version demo-2 deployed to sample onboarding service
+2026-10-01T09:01:00Z ERROR activation request timed out while validating sample invitation
+2026-10-01T09:02:00Z WARN retry threshold reached for sample invitation
+2026-10-01T09:03:00Z ERROR activation request timed out while validating sample invitation

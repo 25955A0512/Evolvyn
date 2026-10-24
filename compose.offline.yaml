@@ -1,0 +1,9 @@
+services:
+  api:
+    build:
+      context: .local/container-build/api
+      dockerfile: Dockerfile
+  web:
+    build:
+      context: .local/container-build/web
+      dockerfile: Dockerfile
