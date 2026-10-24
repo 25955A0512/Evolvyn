@@ -19,7 +19,7 @@ from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, R
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from backend.retrieval import retrieve
-from backend.providers import response_chunks
+from backend.providers import response_chunks, ProviderNotConfigured
 from backend.file_parser import extract, SUPPORTED
 from backend.registry import ToolRegistry, Tool, ToolContext, ToolDenied, ScopeQuery, AnalysisOutput, CandidateInput, RankingOutput
 from backend.mcp_gateway import invoke_rank
@@ -186,6 +186,8 @@ async def upload(id: str, file: UploadFile = File(...), owner=Depends(auth)):
         commerce=persist_commerce(c,owner,document_id,parsed) if parsed else None
         if commerce:
             c.execute("UPDATE records SET body=body || %s::jsonb WHERE id=%s AND owner=%s",(json.dumps({'commerce':commerce}),document_id,owner))
+        from backend.automations import enqueue
+        enqueue(c,owner,id,document_id)
         current['files'].append({'id':document_id,'name':name,**({'import':{'kind':commerce['kind'],'dataset_id':document_id}} if commerce else {})})
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(current),id))
     return {'id':document_id,'name':name,**({'commerce':commerce} if commerce else {})}
@@ -426,6 +428,9 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
             await asyncio.sleep(0)
             convo=get(owner,conversation,'conversation')
             workflow=execution.get('workflow') or {}
+            if mode!='evidence' and not allow_fallback:
+                from backend.providers import provider_config
+                provider_config(mode)
             research_status={'status':'not_requested','detail':'No live research requested for this run'}
             if workflow.get('research') or execution.get('public_research'):
                 checkpoint('research','Discovering public discussion sources for this workflow')
@@ -468,6 +473,7 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
                         proposals=await propose_strategy(report,question,mode)
                         report['recommendation_kind']='Model-generated hypotheses with schema-validated evidence references'
                     except Exception:
+                        if not allow_fallback:raise
                         report['strategy_fallback']='Structured model proposals unavailable; showing evidence-linked heuristic proposals.'
                 ranking=await REGISTRY.invoke('prioritize_actions',{'candidates':[{key:r[key] for key in ('id','title','impact','confidence','effort')} for r in proposals]},context)
                 by_id={r['id']:r for r in proposals}
@@ -512,7 +518,11 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
             if changed:finish_message(owner,conversation,id,'Analysis cancelled. No action was executed.')
         raise
     except httpx.HTTPStatusError as exc:
-        error=('Provider authentication failed. Update MODEL_API_KEY securely in environment settings, or explicitly choose evidence-only mode.' if exc.response.status_code==401 else 'Provider request was rejected. Check provider configuration, access and quota.')
+        error=('Provider authentication failed. Update the selected credential and model route in Key vault, or explicitly choose Evidence only. No action executed.' if exc.response.status_code==401 else 'Provider request was rejected. Check the selected vault route, provider access and quota. No action executed.')
+        changed=change_execution(owner,id,{'state':'FAILED','error':error,'events':events+[{'stage':'failed','detail':error}]})
+        if changed:finish_message(owner,conversation,id,error)
+    except ProviderNotConfigured:
+        error='No agent credential is configured for this route. Add a key and model route in Key vault, or explicitly choose Evidence only. Platform Help keys do not authorize business agents. No action executed.'
         changed=change_execution(owner,id,{'state':'FAILED','error':error,'events':events+[{'stage':'failed','detail':error}]})
         if changed:finish_message(owner,conversation,id,error)
     except Exception:
@@ -554,7 +564,7 @@ async def launch(id:str,body:Message,owner=Depends(auth)):
         active=c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('CREATED','RUNNING')",(owner,id)).fetchone()
         if active:raise HTTPException(409,'This conversation already has a running analysis')
         execution_id=str(uuid4())
-        execution={'conversation':id,'state':'CREATED','events':[],'output':'','question':body.text,'mode':body.mode,'allow_fallback':body.allow_fallback,'workflow':workflow,'context_tools':[v.model_dump() for v in body.context_tools],'public_research':body.public_research,'market_query':body.market_query,'analysis_kind':body.analysis_kind,'actor':POLICY.principal(owner).account,'report':None}
+        execution={'conversation':id,'state':'CREATED','events':[],'output':'','question':body.text,'mode':body.mode,'allow_fallback':body.allow_fallback,'workflow':workflow,'context_tools':[v.model_dump() for v in body.context_tools],'public_research':body.public_research,'market_query':body.market_query,'analysis_kind':body.analysis_kind,'automation_event_id':__import__('backend.automations',fromlist=['EVENT']).EVENT.get(),'actor':POLICY.principal(owner).account,'report':None}
         c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(execution_id,owner,'execution',json.dumps(execution)))
         convo['messages'] += [{'role':'user','text':body.text},{'role':'assistant','text':'Analysis in progress…','execution':execution_id}]
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(convo),id))
@@ -642,7 +652,7 @@ async def schedule_tick():
                     body['enabled']=False
                     raise HTTPException(403,'Schedule membership was revoked')
                 actor_token=ACTOR.set(Principal(owner,body['actor'],member['role']))
-            run=await launch(body['conversation_id'],Message(text=body['query'],mode=body['mode'],allow_fallback=True),owner)
+            run=await launch(body['conversation_id'],Message(text=body['query'],mode=body['mode'],allow_fallback=body.get('allow_fallback',False)),owner)
             body.update(last_run=run['id'],last_error=None)
         except Exception:
             body['last_error']='Run could not start; check evidence and whether this conversation already has an active analysis.'
@@ -655,6 +665,7 @@ async def schedule_loop():
         try:
             await schedule_tick()
             await dispatch_pending()
+            await AUTOMATIONS.tick()
             await MCP_REGISTRY.health_tick()
         except Exception:pass  # Database readiness is surfaced by /api/health; avoid sensitive logs.
         await asyncio.sleep(5)
@@ -930,3 +941,10 @@ def commerce_rows(id:str,offset:int=0,limit:int=50,owner=Depends(auth)):
     table='commerce_sales' if document['commerce']['kind']=='sales' else 'commerce_catalog'
     with conn() as c:rows=c.execute('SELECT * FROM '+table+' WHERE document_id=%s ORDER BY row_number LIMIT %s OFFSET %s',(id,limit,offset)).fetchall()
     return {'dataset_id':id,'rows':[{k:(str(v) if isinstance(v,__import__('decimal').Decimal) else v.isoformat() if isinstance(v,__import__('datetime').date) else v) for k,v in row.items()} for row in rows]}
+
+from backend.platform_help import install as install_platform_help
+install_platform_help(app,auth,get,save,listing,POLICY)
+
+from backend.automations import Automations,install as install_automations
+AUTOMATIONS=Automations({name:globals()[name] for name in ("get","save","listing","conn","POLICY","launch","Message")})
+install_automations(app,auth,AUTOMATIONS)

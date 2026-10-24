@@ -149,7 +149,7 @@ Local callbacks are `http://localhost:3000/api/auth/oauth/google/callback` and `
 
 1. Create an account and business, or open the synthetic sample.
 2. Upload `sample-data/funnel.csv` and `sample-data/customer-feedback.txt`.
-3. Choose Local AI (the default) and ask what to investigate. Evidence only is available for a fast deterministic comparison.
+3. Choose your configured vault route (the default) and ask what to investigate. Evidence only is available for a fast deterministic comparison; it does not call an AI provider. Agent runs fail visibly when their provider is unavailable instead of silently substituting a response.
 4. Inspect calculated conversion (8% then 5%), cited text and recommendation cards.
 5. Select a recommendation, edit the plan, approve, and inspect the created tasks.
 6. Upload `sample-data/followup.csv`; compare observations in Reports & outcomes. The synthetic follow-up is 6%, a one-percentage-point pre/post difference, not proof of improvement caused by an action.
@@ -160,6 +160,8 @@ Local callbacks are `http://localhost:3000/api/auth/oauth/google/callback` and `
 
 ## Verify and preserve
 
+See [agent visibility, platform help and Canvas automations](docs/EXPERIENCE_UPDATE.md) for the latest UI changes, private Gemini/Groq configuration and a manual acceptance walkthrough.
+
 ```bash
 .venv/bin/python -m pytest -q
 npm --prefix frontend run build
@@ -168,6 +170,7 @@ python3 tests/e2e_control_center.py
 python3 tests/e2e_studio.py
 python3 tests/e2e_evolution.py
 python3 tests/e2e_commerce.py
+python3 tests/e2e_experience.py
 .venv/bin/python tests/live_exported_runtime.py
 bash scripts/backup.sh
 ```
@@ -185,3 +188,5 @@ Current studio acceptance: the generated FastAPI application was executed with p
 Previous connected-runtime acceptance: **103 tests passed** against isolated PostgreSQL schemas. The growth/canvas browser journey exercised upload, specialist handoffs and decision approval, page drawing, visual node connections, workflow approval/resume, tool ontology filtering, runtime source download, reload persistence and mobile layout. Existing account, studio and registry/governance browser regressions also passed. Exported product and agent-console frontends compiled; the exported API ran independently, discovered and invoked a real stdio MCP tool, enforced a tool denial, and generated a complete nested product export. The live public research connection returned actual indexed discussion counts; these were not treated as market-growth facts.
 
 Latest e-commerce acceptance: **130 tests passed** with independent per-test PostgreSQL schemas. The live Chromium chat journey passed business creation, structured sales import, exact SQL metrics, real bundled MCP context, successful live public-source research, proposal/approval, verified internal task creation, follow-up comparison, reload persistence and mobile layout. Existing account, registry/governance and product-studio browser flows also passed. See [ECOMMERCE_AUDIT.md](docs/ECOMMERCE_AUDIT.md). Test-file revenue changes are observations, not claimed business lift.
+
+Latest experience acceptance: **138 tests passed**, including isolated support-provider failover, credential separation, durable upload automation dispatch, deduplication and revoked-creator enforcement. Live browser checks passed compact results/approval visibility, connector setup, conditional reviews, unavailable help, persistence and mobile layout; account, registry, studio and e-commerce regressions passed. Exported product/runtime frontends compiled and the independent exported API passed MCP/governance checks. Gemini/Groq help responses are tested using mocked HTTP transport; live acceptance requires private service credentials and available model IDs. See [EXPERIENCE_UPDATE.md](docs/EXPERIENCE_UPDATE.md).

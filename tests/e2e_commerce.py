@@ -26,7 +26,7 @@ with sync_playwright() as p:
     page.get_by_role('dialog').wait_for(state='hidden')
     assert page.request.get(base+'/api/businesses').json()[0]['kind']=='ecommerce'
     page.locator('.composer input[type=file]').set_input_files(str(root/'sample-data/ecommerce-sales.csv'))
-    page.locator('.files').get_by_text('Parsed sales data').wait_for()
+    expect(page.locator('.files')).to_contain_text('Parsed sales data')
     headers={'X-Requested-With':'Evolvyn'}
     def post(path,data):
         r=page.request.post(base+'/api'+path,headers=headers,data=data);assert r.ok,r.text()[:500];return r.json()

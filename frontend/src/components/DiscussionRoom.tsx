@@ -1,15 +1,17 @@
-import { ToolAccess, parseCalls, type ManageConnections } from "./ToolAccess";
 import { useEffect, useRef, useState } from "react";
 import {
-  ArrowRight,
-  Check,
-  Paperclip,
-  Play,
-  Shield,
   Users,
+  Plus,
+  Paperclip,
+  ArrowUp,
+  Check,
+  Settings2,
+  Square,
+  ChevronRight,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ToolAccess, parseCalls, type ManageConnections } from "./ToolAccess";
 import type { client } from "../api";
 import type { Convo } from "../types";
 export function DiscussionRoom({
@@ -29,11 +31,9 @@ export function DiscussionRoom({
 }) {
   const [convos, setConvos] = useState<any[]>([]),
     [conv, setConv] = useState<any>(conversation),
-    [goal, setGoal] = useState(
-      "Review our customer evidence and challenge our product and marketing plan.",
-    ),
+    [goal, setGoal] = useState(""),
     [mode, setMode] = useState("default"),
-    [fallback, setFallback] = useState(true),
+    [fallback, setFallback] = useState(false),
     [tools, setTools] = useState("[]"),
     [rounds, setRounds] = useState(2),
     [runs, setRuns] = useState<any[]>([]),
@@ -41,8 +41,10 @@ export function DiscussionRoom({
     [plan, setPlan] = useState(""),
     [ack, setAck] = useState(false),
     [busy, setBusy] = useState(false),
-    [error, setError] = useState("");
-  const controller = useRef<AbortController | null>(null);
+    [error, setError] = useState(""),
+    [settings, setSettings] = useState(false);
+  const controller = useRef<AbortController | null>(null),
+    bottom = useRef<HTMLDivElement>(null);
   async function load() {
     const [a, b] = await Promise.all([
       api.json("/conversations"),
@@ -55,25 +57,25 @@ export function DiscussionRoom({
     load().catch((e) => setError(e.message));
     return () => controller.current?.abort();
   }, []);
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [active?.events?.length, active?.state]);
   function follow(id: string) {
     controller.current?.abort();
-    const signal = new AbortController();
-    controller.current = signal;
+    controller.current = new AbortController();
     api
       .watch(
         id,
-        (run: any) => {
-          setActive(run);
-          if (run.state === "WAITING_FOR_APPROVAL")
-            setPlan(
-              run.discussion_result?.outputs?.product_manager?.text || "",
-            );
-          if (!["CREATED", "RUNNING"].includes(run.state)) {
+        (r) => {
+          setActive(r);
+          if (r.state === "WAITING_FOR_APPROVAL")
+            setPlan(r.discussion_result?.outputs?.product_manager?.text || "");
+          if (!["CREATED", "RUNNING"].includes(r.state)) {
             load().catch((e) => setError(e.message));
             onRefresh();
           }
         },
-        signal.signal,
+        controller.current.signal,
       )
       .catch((e) => {
         if (e.name !== "AbortError") setError(e.message);
@@ -94,367 +96,342 @@ export function DiscussionRoom({
     active?.discussion_result?.outputs ||
     Object.fromEntries(
       Object.entries(active?.discussion_checkpoint?.outputs || {}).map(
-        ([key, value]) => [key.split(":")[0], value],
+        ([k, v]) => [k.split(":")[0], v],
       ),
     );
+  const running = ["CREATED", "RUNNING"].includes(active?.state);
+  async function createConversation() {
+    const c = await api.json("/conversations", {
+      method: "POST",
+      body: JSON.stringify({
+        title: "Business and product discussion",
+        business_id: businessId || null,
+        project_id: projectId || null,
+      }),
+    });
+    setConv(c);
+    await load();
+    onRefresh();
+    return c;
+  }
   return (
-    <div className="studio-page">
-      <div className="studio-page-title">
-        <span className="eyebrow">DISCUSSION ROOM / LANGGRAPH</span>
-        <h1>Better decisions start with a discussion.</h1>
-        <p>
-          A business analyst, marketing analyst, product manager and reviewer
-          share evidence, challenge claims and hand off a proposal for your
-          decision.
-        </p>
+    <div className="discussion-chat studio-page">
+      <div className="discussion-chat-heading">
+        <span className="studio-icon">
+          <Users size={22} />
+        </span>
+        <div>
+          <h1>Think it through with your team.</h1>
+          <p>
+            One question. Business, marketing, product and review
+            perspectives—grounded in your evidence.
+          </p>
+        </div>
+        <button
+          aria-label="Discussion settings"
+          onClick={() => setSettings(!settings)}
+        >
+          <Settings2 size={20} />
+        </button>
       </div>
       {error && (
-        <div role="alert" className="error">
+        <p className="error" role="alert">
           {error}
-        </div>
+        </p>
       )}
-      <ToolAccess
-        api={api}
-        onManage={onManage}
-        inline
-        calls={parseCalls(tools)}
-        onChange={(v) => setTools(JSON.stringify(v))}
-        conversationId={conv?.id}
-      />
-      <div className="discussion-layout">
-        <section>
-          <form
-            className="studio-card studio-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              act(async () => {
-                if (!conv)
-                  throw Error(
-                    "Create or choose an evidence conversation first",
-                  );
-                const run = await api.json("/discussions", {
-                  method: "POST",
-                  body: JSON.stringify({
-                    conversation_id: conv.id,
-                    goal,
-                    mode,
-                    allow_fallback: fallback,
-                    max_rounds: rounds,
-                    max_seconds: 300,
-                    max_output_tokens: 6144,
-                    context_tools: JSON.parse(tools),
-                  }),
-                });
-                setActive(run);
-                setPlan("");
-                follow(run.id);
-              });
+      <div className="discussion-chat-context">
+        <label>
+          Evidence conversation
+          <select
+            aria-label="Discussion conversation"
+            value={conv?.id || ""}
+            onChange={(e) => {
+              setConv(convos.find((c) => c.id === e.target.value));
+              setActive(null);
             }}
           >
-            <h3>
-              <Users size={18} />
-              Set the discussion goal
-            </h3>
-            <label>
-              Evidence conversation
-              <select
-                aria-label="Discussion conversation"
-                value={conv?.id || ""}
-                onChange={(e) =>
-                  setConv(convos.find((c) => c.id === e.target.value))
-                }
-              >
-                <option value="">Choose a conversation</option>
-                {convos
-                  .filter((c) => !projectId || c.project_id === projectId)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.title}
-                    </option>
-                  ))}
-              </select>
-            </label>
-            {!conv && (
-              <button
-                type="button"
-                onClick={() =>
-                  act(async () => {
-                    const c = await api.json("/conversations", {
-                      method: "POST",
-                      body: JSON.stringify({
-                        title: "Business and product discussion",
-                        business_id: businessId || null,
-                        project_id: projectId || null,
-                      }),
-                    });
-                    setConv(c);
-                    await load();
-                    onRefresh();
-                  })
-                }
-              >
-                Create discussion workspace
-              </button>
-            )}
-            {conv && (
-              <>
-                <label className="discussion-upload">
-                  <Paperclip size={14} />
-                  Add CRM export or customer feedback
-                  <input
-                    aria-label="Discussion evidence file"
-                    type="file"
-                    accept=".txt,.csv,.pdf,.docx"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file)
-                        act(async () => {
-                          const data = new FormData();
-                          data.append("file", file);
-                          await api.json(
-                            "/conversations/" + conv.id + "/files",
-                            { method: "POST", body: data },
-                          );
-                          setConv(await api.json("/conversations/" + conv.id));
-                        });
-                    }}
-                  />
-                </label>
-                <div className="discussion-files">
-                  {conv.files?.map((f: any) => (
-                    <span key={f.id}>{f.name}</span>
-                  ))}
-                </div>
-              </>
-            )}
-            <label>
-              Decision or business goal
-              <textarea
-                required
-                minLength={5}
-                aria-label="Decision or business goal"
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-              />
-            </label>
-            <label>
-              Model routing
-              <select
-                aria-label="Discussion model routing"
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-              >
-                <option value="default">
-                  Default key / per-agent overrides
+            <option value="">Choose a conversation</option>
+            {convos
+              .filter((c) => c.project_id === (projectId || null))
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.title}
                 </option>
-                <option value="local">Local AI · no external key</option>
-                <option value="evidence">Deterministic role analysis</option>
-              </select>
-            </label>
-            <label className="studio-checkbox">
-              <input
-                type="checkbox"
-                checked={fallback}
-                onChange={(e) => setFallback(e.target.checked)}
-              />
-              Allow a labeled evidence fallback when a provider fails
-            </label>
-            <details>
-              <summary>Loop and MCP context settings</summary>
-              <label>
-                Maximum review rounds
-                <input
-                  type="number"
-                  min={1}
-                  max={3}
-                  value={rounds}
-                  onChange={(e) => setRounds(Number(e.target.value))}
-                />
-              </label>
-              <label>
-                Read-only registered tool calls
-                <textarea
-                  aria-label="Discussion context tools"
-                  className="code-editor"
-                  value={tools}
-                  onChange={(e) => setTools(e.target.value)}
-                />
-              </label>
-              <small>
-                Use a list of objects with name and arguments. Tools must be
-                registered, authorized, read-only and compatible with the
-                project data policy.
-              </small>
-            </details>
-            <button className="studio-primary" disabled={busy || !conv}>
-              <Play size={14} />
-              Start specialist discussion
-            </button>
-          </form>
-          <h3 className="studio-subtitle">Saved discussions</h3>
-          {runs.map((run) => (
-            <button
-              className="studio-history"
-              key={run.id}
-              onClick={() => {
-                setActive(run);
-                setPlan(
-                  run.discussion_result?.outputs?.product_manager?.text || "",
-                );
-                if (["CREATED", "RUNNING"].includes(run.state)) follow(run.id);
-              }}
-            >
-              <Users size={15} />
-              <span>
-                {run.question}
-                <small>{run.state}</small>
-              </span>
-              <ArrowRight size={14} />
-            </button>
-          ))}
-        </section>
-        <section>
-          {!active ? (
-            <div className="studio-preview-empty">
-              <Users size={40} />
-              <h2>Your specialists, one shared goal.</h2>
-              <p>
-                Upload a CRM export, customer feedback or a research document.
-                MCP tools can add authorized context. No live market feed is
-                assumed.
-              </p>
-              <div>
-                <span>Evidence</span>
-                <span>Handoffs</span>
-                <span>Human decision</span>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="discussion-status">
-                <span className="status-pill">
-                  {active.state.replaceAll("_", " ")}
-                </span>
-                <span>
-                  {active.discussion_checkpoint?.reserved_output_tokens || 0}{" "}
-                  tokens reserved · {active.discussion_result?.round || 0}/
-                  {active.discussion_input?.max_rounds || rounds} rounds
-                </span>
-                {["CREATED", "RUNNING"].includes(active.state) && (
-                  <button
-                    onClick={() =>
-                      act(async () => {
-                        setActive(
-                          await api.json(
-                            "/executions/" + active.id + "/cancel",
-                            { method: "POST" },
-                          ),
-                        );
-                      })
-                    }
-                  >
-                    Cancel
-                  </button>
-                )}
-              </div>
-              <div
-                className="agent-graph"
-                role="img"
-                aria-label="Business analyst to marketing analyst to product manager to reviewer with a bounded review loop"
-              >
-                {[
-                  "business_analyst",
-                  "marketing_analyst",
-                  "product_manager",
-                  "reviewer",
-                ].map((agent, i) => (
-                  <div
-                    className={
-                      "agent-graph-node " + (outputs[agent] ? "complete" : "")
-                    }
-                    key={agent}
-                  >
-                    <span>
-                      {outputs[agent] ? (
-                        <Check size={16} />
-                      ) : (
-                        String(i + 1).padStart(2, "0")
-                      )}
-                    </span>
-                    <strong>{agent.replaceAll("_", " ")}</strong>
-                    {i < 3 && <ArrowRight size={13} />}
-                  </div>
-                ))}
-                <small>
-                  Reviewer → Product manager · bounded revision loop
-                </small>
-              </div>
-              {Object.entries(outputs).map(([agent, result]: [string, any]) => (
-                <article className="studio-card specialist-output" key={agent}>
-                  <div className="studio-card-heading">
-                    <h3>{agent.replaceAll("_", " ")}</h3>
-                    <span className="status-pill">{result.mode}</span>
-                  </div>
-                  <small>{result.classification}</small>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {result.text}
-                  </ReactMarkdown>
-                  {!!result.memory_ids?.length && (
-                    <small>
-                      {result.memory_ids.length} reviewed memories recalled
-                    </small>
-                  )}
-                </article>
               ))}
-              {!!active.discussion_result?.issues?.length && (
-                <div className="studio-card review-issues">
-                  <h3>
-                    <Shield size={16} />
-                    Unresolved review issues
-                  </h3>
-                  {active.discussion_result.issues.map((issue: string) => (
-                    <p key={issue}>{issue}</p>
-                  ))}
-                </div>
-              )}
-              {active.error && <p className="error">{active.error}</p>}
-              {active.state === "WAITING_FOR_APPROVAL" && (
-                <form
-                  className="studio-card studio-form"
-                  onSubmit={(e) => {
-                    e.preventDefault();
+          </select>
+        </label>
+        <button
+          onClick={() =>
+            act(async () => {
+              await createConversation();
+              setActive(null);
+            })
+          }
+        >
+          <Plus size={16} />
+          {conv ? "New discussion" : "Create discussion workspace"}
+        </button>
+        <label className="discussion-attach">
+          <Paperclip size={18} />
+          <span>Add evidence</span>
+          <input
+            aria-label="Discussion evidence file"
+            type="file"
+            accept=".txt,.csv,.pdf,.docx"
+            disabled={busy || running}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file)
+                act(async () => {
+                  const c = conv || (await createConversation());
+                  const data = new FormData();
+                  data.append("file", file);
+                  await api.json("/conversations/" + c.id + "/files", {
+                    method: "POST",
+                    body: data,
+                  });
+                  setConv(await api.json("/conversations/" + c.id));
+                });
+              e.target.value = "";
+            }}
+          />
+        </label>
+      </div>
+      {conv?.files?.length > 0 && (
+        <div className="discussion-files">
+          {conv.files.map((f: any) => (
+            <span key={f.id}>
+              <Paperclip size={13} />
+              {f.name}
+            </span>
+          ))}
+        </div>
+      )}
+      {settings && (
+        <section className="discussion-settings">
+          <label>
+            Model routing
+            <select
+              aria-label="Discussion model route"
+              value={mode}
+              onChange={(e) => setMode(e.target.value)}
+            >
+              <option value="default">Workspace vault / agent overrides</option>
+              <option value="local">Local model</option>
+              <option value="evidence">
+                Explicit offline evidence rules (no AI)
+              </option>
+            </select>
+          </label>
+          <label>
+            Maximum review rounds
+            <input
+              type="number"
+              min={1}
+              max={3}
+              value={rounds}
+              onChange={(e) => setRounds(Number(e.target.value))}
+            />
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={fallback}
+              onChange={(e) => setFallback(e.target.checked)}
+            />
+            Allow an explicitly labeled offline rules fallback
+          </label>
+          <ToolAccess
+            api={api}
+            onManage={onManage}
+            inline
+            calls={parseCalls(tools)}
+            onChange={(v) => setTools(JSON.stringify(v))}
+            conversationId={conv?.id}
+          />
+          <details>
+            <summary>Advanced tool arguments</summary>
+            <textarea
+              aria-label="Discussion context tools"
+              value={tools}
+              onChange={(e) => setTools(e.target.value)}
+            />
+          </details>
+        </section>
+      )}
+      {runs.length > 0 && (
+        <details className="discussion-history">
+          <summary>
+            Previous discussions ·{" "}
+            {runs.filter((r) => !conv || r.conversation === conv.id).length}
+          </summary>
+          {runs
+            .filter((r) => !conv || r.conversation === conv.id)
+            .map((r) => (
+              <button
+                key={r.id}
+                onClick={() => {
+                  setActive(r);
+                  setPlan(
+                    r.discussion_result?.outputs?.product_manager?.text || "",
+                  );
+                  if (["CREATED", "RUNNING"].includes(r.state)) follow(r.id);
+                }}
+              >
+                {r.question}
+                <span>{r.state.replaceAll("_", " ").toLowerCase()}</span>
+                <ChevronRight size={15} />
+              </button>
+            ))}
+        </details>
+      )}
+      <div className="discussion-thread" aria-live="polite">
+        {!active ? (
+          <div className="discussion-intro">
+            <div className="discussion-avatars">
+              {["BA", "MA", "PM", "QA"].map((v) => (
+                <span key={v}>{v}</span>
+              ))}
+            </div>
+            <h2>What decision are you working on?</h2>
+            <p>
+              Attach sales data or feedback, then ask your question below. Your
+              selected models generate the discussion. Missing credentials and
+              provider failures are shown clearly.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="discussion-question">
+              <span>You asked</span>
+              <p>{active.question}</p>
+            </div>
+            <div className="discussion-progress" role="status">
+              <span
+                className={"run-dot " + (running ? "running" : "completed")}
+              />
+              <strong>
+                {active.state === "WAITING_FOR_APPROVAL"
+                  ? "Ready for your decision"
+                  : active.state.replaceAll("_", " ").toLowerCase()}
+              </strong>
+              <span>{active.events?.at(-1)?.detail}</span>
+              {running && (
+                <button
+                  onClick={() =>
                     act(async () => {
                       setActive(
-                        await api.json(
-                          "/discussions/" + active.id + "/decision",
-                          {
-                            method: "POST",
-                            body: JSON.stringify({
-                              approve: true,
-                              plan,
-                              acknowledge_issues: ack,
-                            }),
-                          },
-                        ),
+                        await api.json("/executions/" + active.id + "/cancel", {
+                          method: "POST",
+                        }),
                       );
-                      await load();
-                    });
-                  }}
+                    })
+                  }
                 >
-                  <h3>Review the decision before it becomes memory.</h3>
-                  <label>
-                    Approved plan
-                    <textarea
-                      aria-label="Reviewed discussion plan"
-                      value={plan}
-                      onChange={(e) => setPlan(e.target.value)}
-                      maxLength={4000}
-                      minLength={3}
-                      required
-                    />
-                  </label>
-                  {!!active.discussion_result?.issues?.length && (
-                    <label className="studio-checkbox">
+                  <Square size={14} />
+                  Stop
+                </button>
+              )}
+            </div>
+            <div
+              className="agent-graph compact-agent-graph"
+              aria-label="Specialist handoffs"
+            >
+              {[
+                "business_analyst",
+                "marketing_analyst",
+                "product_manager",
+                "reviewer",
+              ].map((a, i) => (
+                <span className={outputs[a] ? "complete" : ""} key={a}>
+                  {outputs[a] ? <Check size={14} /> : i + 1}
+                  {a.replaceAll("_", " ")}
+                </span>
+              ))}
+            </div>
+            {Object.entries(outputs)
+              .sort(
+                ([a], [b]) =>
+                  [
+                    "business_analyst",
+                    "marketing_analyst",
+                    "product_manager",
+                    "reviewer",
+                  ].indexOf(a) -
+                  [
+                    "business_analyst",
+                    "marketing_analyst",
+                    "product_manager",
+                    "reviewer",
+                  ].indexOf(b),
+              )
+              .map(([agent, result]: [string, any]) => (
+                <article
+                  className="specialist-output discussion-bubble"
+                  key={agent}
+                >
+                  <div className="specialist-avatar">
+                    {agent
+                      .split("_")
+                      .map((p) => p[0])
+                      .join("")
+                      .toUpperCase()}
+                  </div>
+                  <div>
+                    <h3>{agent.replaceAll("_", " ")}</h3>
+                    <small>
+                      {result.classification} · {result.mode}
+                    </small>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {result.text}
+                    </ReactMarkdown>
+                  </div>
+                </article>
+              ))}
+            {active.error && (
+              <p className="error" role="alert">
+                {active.error}
+              </p>
+            )}
+            {active.state === "WAITING_FOR_APPROVAL" && (
+              <form
+                className="discussion-decision"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  act(async () => {
+                    setActive(
+                      await api.json(
+                        "/discussions/" + active.id + "/decision",
+                        {
+                          method: "POST",
+                          body: JSON.stringify({
+                            approve: true,
+                            plan,
+                            acknowledge_issues: ack,
+                          }),
+                        },
+                      ),
+                    );
+                    await load();
+                  });
+                }}
+              >
+                <h3>Keep the decision you agree with.</h3>
+                <label>
+                  Approved plan
+                  <textarea
+                    aria-label="Reviewed discussion plan"
+                    value={plan}
+                    onChange={(e) => setPlan(e.target.value)}
+                    maxLength={4000}
+                    minLength={3}
+                    required
+                  />
+                </label>
+                {active.discussion_result?.issues?.length > 0 && (
+                  <>
+                    <p>{active.discussion_result.issues.join("; ")}</p>
+                    <label>
                       <input
                         type="checkbox"
                         checked={ack}
@@ -463,47 +440,105 @@ export function DiscussionRoom({
                       I reviewed and reconciled the unresolved issues in my
                       edited plan
                     </label>
-                  )}
-                  <div className="studio-actions">
-                    <button className="studio-primary" disabled={busy}>
-                      Approve & remember decision
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        act(async () => {
-                          setActive(
-                            await api.json(
-                              "/discussions/" + active.id + "/decision",
-                              {
-                                method: "POST",
-                                body: JSON.stringify({
-                                  approve: false,
-                                  plan: plan || "Rejected proposal",
-                                }),
-                              },
-                            ),
-                          );
-                          await load();
-                        })
-                      }
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </form>
-              )}
-              {active.memory_id && (
-                <div className="studio-success">
-                  <Check size={16} />
-                  Approved decision saved to scoped agent memory.
+                  </>
+                )}
+                <div className="studio-actions">
+                  <button className="studio-primary" disabled={busy}>
+                    Approve & remember decision
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      act(async () => {
+                        setActive(
+                          await api.json(
+                            "/discussions/" + active.id + "/decision",
+                            {
+                              method: "POST",
+                              body: JSON.stringify({
+                                approve: false,
+                                plan: plan || "Rejected after review",
+                              }),
+                            },
+                          ),
+                        );
+                        await load();
+                      })
+                    }
+                  >
+                    Reject decision
+                  </button>
                 </div>
-              )}
-            </>
-          )}
-        </section>
+              </form>
+            )}
+            {active.memory_id && (
+              <p className="studio-success" role="status">
+                Approved decision saved to scoped agent memory.
+              </p>
+            )}
+          </>
+        )}
+        <div ref={bottom} />
       </div>
+      <form
+        className="discussion-composer"
+        onSubmit={(e) => {
+          e.preventDefault();
+          act(async () => {
+            const c = conv || (await createConversation());
+            const r = await api.json("/discussions", {
+              method: "POST",
+              body: JSON.stringify({
+                conversation_id: c.id,
+                goal,
+                mode,
+                allow_fallback: fallback,
+                max_rounds: rounds,
+                max_seconds: 300,
+                max_output_tokens: 6144,
+                context_tools: parseCalls(tools),
+              }),
+            });
+            setActive(r);
+            setPlan("");
+            setGoal("");
+            follow(r.id);
+          });
+        }}
+      >
+        <label className="sr-label" htmlFor="discussion-goal">
+          Decision or business goal
+        </label>
+        <textarea
+          id="discussion-goal"
+          aria-label="Decision or business goal"
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          placeholder="Ask your team a business or product question…"
+          required
+          minLength={5}
+          maxLength={2000}
+          rows={2}
+        />
+        <div>
+          <button type="button" onClick={() => setSettings(!settings)}>
+            <Settings2 size={16} />
+            {mode === "default" ? "Workspace models" : mode}
+          </button>
+          <small>
+            Every write and saved decision stays under your approval.
+          </small>
+          <button
+            className="studio-primary"
+            aria-label="Start specialist discussion"
+            disabled={busy || running || goal.trim().length < 5}
+          >
+            <ArrowUp size={19} />
+            <span>Start specialist discussion</span>
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

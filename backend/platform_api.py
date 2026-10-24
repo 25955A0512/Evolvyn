@@ -27,6 +27,7 @@ class ScheduleInput(BaseModel):
     interval_minutes:int=Field(ge=1,le=10080)
     mode:Literal['default','evidence','provider','local','groq','gemini','openrouter']='evidence'
     enabled:bool=True
+    allow_fallback:bool=False
 
 class ScheduleToggle(BaseModel):
     enabled:bool
@@ -102,7 +103,7 @@ def install(app,services):
     @app.post('/api/schedules/{id}/run')
     async def run_schedule(id:str,owner=Depends(auth)):
         schedule=get(owner,id,'schedule')
-        run=await launch(schedule['conversation_id'],Message(text=schedule['query'],mode=schedule['mode'],allow_fallback=True),owner)
+        run=await launch(schedule['conversation_id'],Message(text=schedule['query'],mode=schedule['mode'],allow_fallback=schedule.get('allow_fallback',False)),owner)
         schedule.update(last_run=run['id'],last_error=None,next_run_at=(datetime.now(timezone.utc)+timedelta(minutes=schedule['interval_minutes'])).isoformat())
         save(owner,'schedule',{k:v for k,v in schedule.items() if k!='id'},id)
         return run

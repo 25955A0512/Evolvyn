@@ -17,6 +17,7 @@ import {
   Brain,
   KeyRound,
 } from "lucide-react";
+import { PlatformHelp } from "./components/PlatformHelp";
 import { ToolAccess, type ContextCall } from "./components/ToolAccess";
 import { client } from "./api";
 import type { Business, Convo, Run } from "./types";
@@ -41,7 +42,7 @@ function App() {
   );
   const [entry, setEntry] = useState("");
   const [demoConversation, setDemoConversation] = useState<string | null>(null);
-  const [mode, setMode] = useState("local");
+  const [mode, setMode] = useState("default");
   const [analysisKind, setAnalysisKind] = useState("business");
   const [list, setList] = useState<Convo[]>([]);
   const [current, setCurrent] = useState<Convo | null>(null);
@@ -152,18 +153,23 @@ function App() {
     return c as Convo;
   }
   async function open(id: string) {
-    selected.current = id;
-    setSettings(false);
-    setError("");
-    const c = await refresh(id);
-    for (const m of c.messages) {
-      if (m.execution) {
-        const r: Run = await api.json("/executions/" + m.execution);
-        setRuns((prev) => ({ ...prev, [r.id]: r }));
-        if (["CREATED", "RUNNING"].includes(r.state)) watch(r.id);
+    setBusy(true);
+    try {
+      selected.current = id;
+      setSettings(false);
+      setError("");
+      const c = await refresh(id);
+      for (const m of c.messages) {
+        if (m.execution) {
+          const r: Run = await api.json("/executions/" + m.execution);
+          setRuns((prev) => ({ ...prev, [r.id]: r }));
+          if (["CREATED", "RUNNING"].includes(r.state)) watch(r.id);
+        }
       }
+      if (innerWidth < 560) setSidebar(false);
+    } finally {
+      setBusy(false);
     }
-    if (innerWidth < 560) setSidebar(false);
   }
   useEffect(() => {
     if (token) {
@@ -181,8 +187,31 @@ function App() {
     };
   }, [token]);
   useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    bottom.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [current?.messages.length]);
+  const latestRunId = current?.messages
+    .slice()
+    .reverse()
+    .find((m) => m.execution)?.execution;
+  const latestRun = latestRunId ? runs[latestRunId] : null;
+  function revealRun(part: "findings" | "approval" = "findings") {
+    if (!latestRun) return;
+    const root = document.getElementById("result-" + latestRun.id);
+    const target =
+      part === "approval"
+        ? root?.querySelector(".approval")
+        : root?.querySelector(".commerce-metrics") || root;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  useEffect(() => {
+    if (
+      latestRun?.state === "WAITING_FOR_APPROVAL" ||
+      latestRun?.state === "FAILED"
+    )
+      document
+        .getElementById("result-" + latestRun.id)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [latestRun?.id, latestRun?.state]);
   async function create() {
     const b = businesses.find((b) => b.id === business);
     const c = await api.json("/conversations", {
@@ -216,7 +245,7 @@ function App() {
         body: JSON.stringify({
           text,
           mode,
-          allow_fallback: true,
+          allow_fallback: false,
           analysis_kind: analysisKind,
           context_tools: contextTools,
           public_research: publicResearch,
@@ -226,6 +255,9 @@ function App() {
       setRuns((prev) => ({ ...prev, [r.id]: r }));
       setActive(r.id);
       setText("");
+      document
+        .querySelectorAll<HTMLDetailsElement>(".composer details[open]")
+        .forEach((node) => (node.open = false));
       await refresh(c.id);
       watch(r.id);
       await reload();
@@ -681,7 +713,10 @@ function App() {
             {b?.name || "My business"} <span className="slash">/</span>
             {settings ? "Integrations" : current?.title || "New conversation"}
           </span>
-          <span className="badge">● Private workspace</span>
+          <div className="workspace-header-actions">
+            <PlatformHelp key={organization} api={api} />
+            <span className="badge">● Private workspace</span>
+          </div>
         </header>
         <div className="scroll">
           {settings ? (
@@ -810,7 +845,11 @@ function App() {
                   const r = m.execution ? runs[m.execution] : null;
                   const report = m.report || r?.report;
                   return (
-                    <article key={i} className={m.role}>
+                    <article
+                      key={i}
+                      id={m.execution ? "result-" + m.execution : undefined}
+                      className={m.role}
+                    >
                       <div className="message-label">
                         {m.role === "user" ? "You" : "✳ Evolvyn"}
                       </div>
@@ -877,6 +916,48 @@ function App() {
             </div>
           )}
         </div>
+        {!settings && latestRun && (
+          <div className="run-summary" role="status">
+            <span className={"run-dot " + latestRun.state.toLowerCase()} />
+            <div>
+              <strong>
+                {latestRun.state === "WAITING_FOR_APPROVAL"
+                  ? "Analysis ready · review your proposed action"
+                  : latestRun.state === "COMPLETED"
+                    ? "Action completed · result saved"
+                    : latestRun.state === "FAILED"
+                      ? "Run stopped · see the error"
+                      : latestRun.state === "CANCELLED"
+                        ? "Run cancelled"
+                        : "Agent working · " +
+                          (latestRun.events.at(-1)?.stage || "queued")}
+              </strong>
+              <small>
+                {latestRun.events.at(-1)?.detail || "Waiting for the worker"}
+              </small>
+            </div>
+            <button onClick={() => revealRun()}>View results</button>
+            {latestRun.state === "WAITING_FOR_APPROVAL" && (
+              <button className="primary" onClick={() => revealRun("approval")}>
+                Review action
+              </button>
+            )}
+            <button
+              aria-label="Refresh run status"
+              onClick={async () => {
+                try {
+                  const r = await api.json("/executions/" + latestRun.id);
+                  setRuns((prev) => ({ ...prev, [r.id]: r }));
+                  if (["CREATED", "RUNNING"].includes(r.state)) watch(r.id);
+                } catch (e) {
+                  handleError(e);
+                }
+              }}
+            >
+              Refresh
+            </button>
+          </div>
+        )}
         {!settings && (
           <footer
             onDragOver={(e) => e.preventDefault()}
@@ -919,34 +1000,37 @@ function App() {
               )}
               <details className="chat-research">
                 <summary>Market research options</summary>
-                <label>
-                  <input
-                    aria-label="Include public research"
-                    type="checkbox"
-                    checked={publicResearch}
-                    onChange={(e) => setPublicResearch(e.target.checked)}
-                  />
-                  Include live public discussion research with this run
-                </label>
-                {publicResearch && (
+                <div className="research-popover">
                   <label>
-                    Public research query
                     <input
-                      aria-label="Public research query"
-                      value={marketQuery}
-                      onChange={(e) => setMarketQuery(e.target.value)}
-                      maxLength={200}
-                      placeholder="Public product/category terms only"
+                      aria-label="Include public research"
+                      type="checkbox"
+                      checked={publicResearch}
+                      onChange={(e) => setPublicResearch(e.target.checked)}
                     />
-                    <small>
-                      This exact query is sent to Algolia/Hacker News. It is
-                      discussion evidence, not verified competitor or
-                      market-share data.
-                    </small>
+                    Include live public discussion research with this run
                   </label>
-                )}
+                  {publicResearch && (
+                    <label>
+                      Public research query
+                      <input
+                        aria-label="Public research query"
+                        value={marketQuery}
+                        onChange={(e) => setMarketQuery(e.target.value)}
+                        maxLength={200}
+                        placeholder="Public product/category terms only"
+                      />
+                      <small>
+                        This exact query is sent to Algolia/Hacker News. It is
+                        discussion evidence, not verified competitor or
+                        market-share data.
+                      </small>
+                    </label>
+                  )}
+                </div>
               </details>
               <textarea
+                rows={2}
                 aria-label="Message Evolvyn"
                 placeholder="What would you like to improve?"
                 value={text}
@@ -1040,6 +1124,10 @@ function App() {
           key={organization}
           api={api}
           initialTab={studio}
+          onNavigate={(id) => {
+            setStudio(null);
+            open(id).catch(handleError);
+          }}
           conversation={current}
           projectId={project}
           businessId={business}

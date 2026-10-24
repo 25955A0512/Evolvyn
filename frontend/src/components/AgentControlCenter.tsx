@@ -1,3 +1,4 @@
+import { ConnectorGallery, ConnectorArt } from "./ConnectorGallery";
 import { useEffect, useRef, useState } from "react";
 import {
   X,
@@ -54,6 +55,8 @@ export function AgentControlCenter({
   const [invoking, setInvoking] = useState<any>(null);
   const [argumentsText, setArgumentsText] = useState("{}");
   const [result, setResult] = useState<any>(null);
+  const serverForm = useRef<HTMLFormElement | null>(null);
+  const [toolSearch, setToolSearch] = useState("");
   const watch = useRef<AbortController | null>(null);
   const fail = (e: unknown) =>
     setError(e instanceof Error ? e.message : String(e));
@@ -266,6 +269,51 @@ export function AgentControlCenter({
                     verify connectivity before use.
                   </p>
                 </div>
+                <ConnectorGallery
+                  servers={servers}
+                  onConfigure={(name) => {
+                    setTransport("streamable_http");
+                    requestAnimationFrame(() => {
+                      serverForm.current?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                      const input =
+                        serverForm.current?.querySelector<HTMLInputElement>(
+                          "input[name=name]",
+                        );
+                      if (input) {
+                        input.value = name;
+                        input.focus();
+                      }
+                    });
+                  }}
+                  onBundled={(name, profile) => {
+                    const existing = servers.find((s) => s.profile === profile);
+                    if (existing) {
+                      document
+                        .getElementById("mcp-" + existing.id)
+                        ?.scrollIntoView({
+                          behavior: "smooth",
+                          block: "center",
+                        });
+                      return;
+                    }
+                    action(async () => {
+                      const row = await api.json("/mcp/servers", {
+                        method: "POST",
+                        body: JSON.stringify({
+                          name,
+                          profile,
+                          transport: "stdio",
+                        }),
+                      });
+                      await api.json("/mcp/servers/" + row.id + "/probe", {
+                        method: "POST",
+                      });
+                    }, "Bundled server registered and health checked");
+                  }}
+                />
                 <div className="control-stats">
                   <div>
                     <strong>{servers.length}</strong>
@@ -294,10 +342,14 @@ export function AgentControlCenter({
                       </div>
                     )}
                     {servers.map((s) => (
-                      <article className="control-card server-card" key={s.id}>
+                      <article
+                        className="control-card server-card"
+                        id={"mcp-" + s.id}
+                        key={s.id}
+                      >
                         <div className="control-card-heading">
                           <span className="server-icon">
-                            <Server size={20} />
+                            <ConnectorArt name={s.name + " " + s.profile} />
                           </span>
                           <div>
                             <strong>{s.name}</strong>
@@ -397,6 +449,7 @@ export function AgentControlCenter({
                     ))}
                   </div>
                   <form
+                    ref={serverForm}
                     className="control-card control-form"
                     onSubmit={(e) => {
                       e.preventDefault();
@@ -528,58 +581,81 @@ export function AgentControlCenter({
                 </div>
                 <div className="control-columns">
                   <div>
-                    {tools.map((t) => (
-                      <article className="control-card" key={t.name}>
-                        <div className="control-card-heading">
-                          <Blocks size={19} />
-                          <strong>{t.name}</strong>
-                          <span className="status-pill">{t.risk}</span>
-                        </div>
-                        <p>{t.description}</p>
-                        <div className="tool-chips">
-                          {t.capabilities?.map((c: string) => (
-                            <span key={c}>{c}</span>
-                          ))}
-                        </div>
-                        <details>
-                          <summary>Input / output contracts</summary>
-                          <pre>
-                            {JSON.stringify(
-                              {
-                                input: t.input_schema,
-                                output:
-                                  t.output_schema || t.protocol_output_schema,
-                              },
-                              null,
-                              2,
-                            )}
-                          </pre>
-                        </details>
-                        <div className="control-card-actions">
-                          <button onClick={() => invoke(t)}>
-                            {t.risk === "read"
-                              ? "Invoke tool"
-                              : "Request approval"}
-                            <ArrowRight size={13} />
-                          </button>
-                          {t.id && (
-                            <button
-                              onClick={() =>
-                                action(
-                                  () =>
-                                    api.json("/tool-registry/" + t.id, {
-                                      method: "DELETE",
-                                    }),
-                                  "Tool registration removed",
-                                )
-                              }
-                            >
-                              Remove
+                    <label className="tool-registry-search">
+                      Find a registered capability
+                      <input
+                        aria-label="Search registered tools"
+                        value={toolSearch}
+                        onChange={(e) => setToolSearch(e.target.value)}
+                        placeholder="Search tools, entities or capabilities"
+                      />
+                    </label>
+                    {tools
+                      .filter((t) =>
+                        (
+                          t.name +
+                          " " +
+                          t.description +
+                          " " +
+                          t.entities?.join(" ") +
+                          " " +
+                          t.capabilities?.join(" ")
+                        )
+                          .toLowerCase()
+                          .includes(toolSearch.toLowerCase()),
+                      )
+                      .map((t) => (
+                        <article className="control-card" key={t.name}>
+                          <div className="control-card-heading">
+                            <ConnectorArt name={t.name} size={23} />
+                            <strong>{t.name}</strong>
+                            <span className="status-pill">{t.risk}</span>
+                          </div>
+                          <p>{t.description}</p>
+                          <div className="tool-chips">
+                            {t.capabilities?.map((c: string) => (
+                              <span key={c}>{c}</span>
+                            ))}
+                          </div>
+                          <details>
+                            <summary>Input / output contracts</summary>
+                            <pre>
+                              {JSON.stringify(
+                                {
+                                  input: t.input_schema,
+                                  output:
+                                    t.output_schema || t.protocol_output_schema,
+                                },
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          </details>
+                          <div className="control-card-actions">
+                            <button onClick={() => invoke(t)}>
+                              {t.risk === "read"
+                                ? "Invoke tool"
+                                : "Request approval"}
+                              <ArrowRight size={13} />
                             </button>
-                          )}
-                        </div>
-                      </article>
-                    ))}
+                            {t.id && (
+                              <button
+                                onClick={() =>
+                                  action(
+                                    () =>
+                                      api.json("/tool-registry/" + t.id, {
+                                        method: "DELETE",
+                                      }),
+                                    "Tool registration removed",
+                                  )
+                                }
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                        </article>
+                      ))}
                   </div>
                   <div>
                     <form

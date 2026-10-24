@@ -33,7 +33,7 @@ export function WorkflowCanvas({
     name: "Business improvement loop",
     focus:
       "Analyze the supplied evidence and prioritize a measurable improvement",
-    mode: "local",
+    mode: "default",
     research: false,
     citations: 5,
     recommendations: 3,
@@ -291,7 +291,7 @@ export function WorkflowCanvas({
                     text: template.focus,
                     workflow_id: template.id,
                     mode: template.mode,
-                    allow_fallback: true,
+                    allow_fallback: false,
                   }),
                 });
                 setStatus("Workflow started in your conversation");

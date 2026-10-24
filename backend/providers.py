@@ -15,12 +15,15 @@ PROVIDERS={
     'gemini':{'name':'Gemini','url':'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions','key':'GEMINI_API_KEY','model_env':'GEMINI_MODEL_NAME','default_model':'gemini-2.5-flash'}
 }
 
+class ProviderNotConfigured(ValueError):
+    pass
+
 def provider_config(mode):
     mode=effective_mode(mode)
     enforce_data_policy(mode)
     config=PROVIDERS.get(mode)
     if not config:raise ValueError('Unknown model provider')
-    if config['key'] and not key_for(mode,config):raise ValueError('Provider credential is not configured')
+    if config['key'] and not key_for(mode,config):raise ProviderNotConfigured('Provider credential is not configured')
     return config
 
 async def response_chunks(report, question, history, mode="provider"):

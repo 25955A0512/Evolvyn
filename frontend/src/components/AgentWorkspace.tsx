@@ -1,3 +1,4 @@
+import { ConnectorArt } from "./ConnectorGallery";
 import { useEffect, useState } from "react";
 import {
   X,
@@ -771,7 +772,7 @@ function Integrations({
           .map((s) => (
             <article className="studio-card integration-tile" key={s.id}>
               <span className="studio-icon">
-                <Plug size={21} />
+                <ConnectorArt name={s.name} />
               </span>
               <div>
                 <h3>{s.name}</h3>
@@ -838,9 +839,11 @@ export function AgentWorkspace({
   onClose,
   onRefresh,
   onManage,
+  onNavigate,
 }: {
   api: API;
   initialTab: StudioTab;
+  onNavigate?: (id: string) => void;
   conversation: Convo | null;
   projectId: string;
   businessId: string;
@@ -914,6 +917,7 @@ export function AgentWorkspace({
         <div className="studio-scroll">
           {tab === "canvas" && (
             <DesignCanvas
+              onNavigate={onNavigate}
               api={api}
               projectId={projectId}
               conversation={conversation}

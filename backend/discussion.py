@@ -25,7 +25,7 @@ class DiscussInput(BaseModel):
     growth_report_id:str|None=None
     goal:str=Field(min_length=5,max_length=2000)
     mode:Literal['default','evidence','local','provider','groq','gemini','openrouter']='default'
-    allow_fallback:bool=True
+    allow_fallback:bool=False
     max_rounds:int=Field(default=2,ge=1,le=3)
     max_seconds:int=Field(default=300,ge=10,le=600)
     max_output_tokens:int=Field(default=6144,ge=768,le=10000)

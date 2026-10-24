@@ -40,6 +40,7 @@ with sync_playwright() as p:
     studio.get_by_role('button',name='Analyze growth evidence',exact=True).click()
     studio.get_by_role('heading',name='Market discussion signal').wait_for()
     expect(studio).to_contain_text('No live market source requested')
+    studio.locator('select[name=mode]').select_option('evidence')
     studio.get_by_role('button',name='Run specialist review',exact=True).click()
     studio.get_by_label('Growth decision').wait_for(timeout=30000)
     studio.get_by_label('Growth decision').fill('Test a shorter onboarding checklist. Measure activation from a customer baseline before expanding.')
@@ -65,6 +66,7 @@ with sync_playwright() as p:
     assert canvas_id
     studio.get_by_role('button',name='Node workflow',exact=True).click()
     studio.get_by_label('Workflow conversation').select_option(conversation)
+    expect(studio.get_by_label('Workflow conversation')).to_have_value(conversation)
     studio.get_by_label('Add workflow node').select_option('approval')
     approval=studio.get_by_label('Entry node').locator('option').last.get_attribute('value') or studio.get_by_label('Entry node').locator('option').last.inner_text()
     studio.locator('select[name=source]').select_option('review')
@@ -76,6 +78,7 @@ with sync_playwright() as p:
     studio.locator('select[name=target]').select_option(result)
     studio.locator('select[name=when]').select_option('approved')
     studio.get_by_role('button',name='Add connection',exact=True).click()
+    expect(studio.get_by_label('Workflow conversation')).to_have_value(conversation)
     studio.get_by_role('button',name='Save & run workflow',exact=True).click()
     studio.get_by_role('button',name='Approve exact pending action',exact=True).wait_for(timeout=30000)
     studio.get_by_role('button',name='Approve exact pending action',exact=True).click()

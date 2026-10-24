@@ -34,8 +34,11 @@ def test_retrieval_ranks_late_passages_and_preserves_offsets():
     assert result[0]['document_id']=='d1'
 
 def test_background_analysis_stream_and_approval(client):
+    # Offline assertions explicitly select evidence. Streaming fault/cancellation
+    # tests below mock the renderer so they exercise worker lifecycle independently
+    # of provider credentials and structured proposal generation.
     c=setup(client)
-    r=client.post(f"/api/conversations/{c['id']}/runs",json={'text':'Explain onboarding activation issues'})
+    r=client.post(f"/api/conversations/{c['id']}/runs",json={'mode':'evidence','text':'Explain onboarding activation issues'})
     assert r.status_code==202;run=r.json()
     response=client.get('/api/executions/'+run['id']+'/live')
     snapshots=[json.loads(x[6:]) for x in response.text.split('\n\n') if x.startswith('data: ')]
@@ -56,7 +59,7 @@ def test_cancel_prevents_late_provider_completion(client,monkeypatch):
         yield 'must not finish'
     monkeypatch.setattr(module,'response_chunks',delayed)
     c=setup(client)
-    r=client.post('/api/conversations/'+c['id']+'/runs',json={'text':'onboarding'})
+    r=client.post('/api/conversations/'+c['id']+'/runs',json={'mode':'evidence','text':'onboarding'})
     id=r.json()['id']
     cancelled=client.post('/api/executions/'+id+'/cancel')
     assert cancelled.status_code==200
@@ -70,7 +73,7 @@ def test_background_failure_is_persisted_and_redacted(client,monkeypatch):
         raise httpx.ReadTimeout('secret-in-upstream-exception')
         yield
     monkeypatch.setattr(module,'response_chunks',failed)
-    c=setup(client);r=client.post('/api/conversations/'+c['id']+'/runs',json={'text':'onboarding'})
+    c=setup(client);r=client.post('/api/conversations/'+c['id']+'/runs',json={'mode':'evidence','text':'onboarding'})
     events=client.get('/api/executions/'+r.json()['id']+'/live')
     assert 'secret-in-upstream-exception' not in events.text
     final=client.get('/api/executions/'+r.json()['id']).json()
@@ -83,16 +86,16 @@ def test_concurrent_run_rejected(client,monkeypatch):
         yield 'reply'
     monkeypatch.setattr(module,'response_chunks',delayed)
     c=setup(client)
-    first=client.post('/api/conversations/'+c['id']+'/runs',json={'text':'first question'})
+    first=client.post('/api/conversations/'+c['id']+'/runs',json={'mode':'evidence','text':'first question'})
     assert first.status_code==202
-    assert client.post('/api/conversations/'+c['id']+'/runs',json={'text':'second question'}).status_code==409
+    assert client.post('/api/conversations/'+c['id']+'/runs',json={'mode':'evidence','text':'second question'}).status_code==409
     client.post('/api/executions/'+first.json()['id']+'/cancel')
 
 def test_cross_owner_run_and_retrieval_denied(client):
     foreign=module.save('different-owner','conversation',{'title':'Private','files':[],'messages':[]})
     for path in ['/api/conversations/'+foreign['id']+'/retrieve?q=test','/api/executions/'+foreign['id']+'/live']:
         assert client.get(path).status_code==404
-    assert client.post('/api/conversations/'+foreign['id']+'/runs',json={'text':'steal data'}).status_code==404
+    assert client.post('/api/conversations/'+foreign['id']+'/runs',json={'mode':'evidence','text':'steal data'}).status_code==404
 
 @pytest.mark.anyio
 async def test_provider_stream_adapter(monkeypatch):
@@ -130,7 +133,7 @@ def test_provider_authentication_error_is_actionable(client,monkeypatch):
         yield
     monkeypatch.setattr(module,'response_chunks',unauthorized)
     c=setup(client)
-    execution=client.post('/api/conversations/'+c['id']+'/runs',json={'text':'Review onboarding'}).json()
+    execution=client.post('/api/conversations/'+c['id']+'/runs',json={'mode':'evidence','text':'Review onboarding'}).json()
     client.get('/api/executions/'+execution['id']+'/live')
     result=client.get('/api/executions/'+execution['id']).json()
     assert result['state']=='FAILED'
