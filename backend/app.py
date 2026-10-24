@@ -46,6 +46,8 @@ def init():
         initialize(c)
         c.execute('CREATE TABLE IF NOT EXISTS records (id text PRIMARY KEY, owner text NOT NULL, kind text NOT NULL, body jsonb NOT NULL, created timestamptz DEFAULT now())')
         c.execute('CREATE INDEX IF NOT EXISTS records_tenant_kind_created ON records(owner,kind,created DESC)')
+        from backend.commerce import initialize as initialize_commerce
+        initialize_commerce(c)
         c.execute("UPDATE records SET body = body || %s::jsonb WHERE kind='execution' AND body->>'state' IN ('RUNNING','CREATED') AND body->>'question' IS NULL", (json.dumps({'state':'FAILED','error':'Process interrupted; rerun analysis. No action executed.'}),))
 
 def save(owner, kind, body, id=None):
@@ -61,7 +63,11 @@ def get(owner, id, kind):
     if not row:
         raise HTTPException(404, 'Record not found')
     POLICY.resource(owner,'read',kind,row['body'],row['id'])
-    return {'id': row['id'], **row['body']}
+    body={'id':row['id'],**row['body']}
+    if kind=='document' and body.get('commerce'):
+        from backend.commerce import metrics
+        with conn() as c:body['commerce']=metrics(c,owner,id)
+    return body
 
 def listing(owner, kind):
     with conn() as c:
@@ -111,10 +117,15 @@ class Conversation(BaseModel):
     business_id: str | None = None
     project_id: str | None = None
 
+from backend.evidence_tools import ContextCall
+
 class Message(BaseModel):
     mode: Literal['default','provider','evidence','local','groq','gemini','openrouter'] = 'provider'
     allow_fallback: bool = False
     workflow_id: str | None = None
+    context_tools: list[ContextCall] = Field(default_factory=list,max_length=3)
+    public_research: bool = False
+    market_query: str = Field(default='',max_length=200)
     analysis_kind: Literal['business','operations'] = 'business'
     text: str = Field(min_length=1, max_length=8000)
 
@@ -161,6 +172,9 @@ async def upload(id: str, file: UploadFile = File(...), owner=Depends(auth)):
     except ValueError as exc:raise HTTPException(422,str(exc))
     if not content.strip():raise HTTPException(422,'Document contains no readable text')
     reject_secrets(content)
+    from backend.commerce import parse as parse_commerce,persist as persist_commerce
+    try:parsed=parse_commerce(content) if name.lower().endswith('.csv') else None
+    except csv.Error:raise HTTPException(422,'CSV quoting or row structure is invalid')
     with conn() as c:
         row=c.execute("SELECT body FROM records WHERE id=%s AND owner=%s AND kind='conversation' FOR UPDATE",(id,owner)).fetchone()
         current=row['body']
@@ -169,9 +183,12 @@ async def upload(id: str, file: UploadFile = File(...), owner=Depends(auth)):
             raise HTTPException(409,'Wait for the running analysis before changing its evidence')
         document_id=str(uuid4())
         c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(document_id,owner,'document',json.dumps({'name':name,'content':content,'conversation':id})))
-        current['files'].append({'id':document_id,'name':name})
+        commerce=persist_commerce(c,owner,document_id,parsed) if parsed else None
+        if commerce:
+            c.execute("UPDATE records SET body=body || %s::jsonb WHERE id=%s AND owner=%s",(json.dumps({'commerce':commerce}),document_id,owner))
+        current['files'].append({'id':document_id,'name':name,**({'import':{'kind':commerce['kind'],'dataset_id':document_id}} if commerce else {})})
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(current),id))
-    return {'id':document_id,'name':name}
+    return {'id':document_id,'name':name,**({'commerce':commerce} if commerce else {})}
 
 
 def scoped_documents(owner,conversation):
@@ -181,7 +198,7 @@ def scoped_documents(owner,conversation):
     # Reuse only the same project scope; local-only project data never crosses into another project.
     with conn() as c:
         rows=c.execute("SELECT d.id,d.body FROM records d JOIN records v ON v.id=d.body->>'conversation' AND v.owner=d.owner AND v.kind='conversation' WHERE d.owner=%s AND d.kind='document' AND v.body->>'business_id'=%s AND (v.body->>'project_id') IS NOT DISTINCT FROM %s ORDER BY d.created DESC LIMIT 20",(owner,conversation['business_id'],conversation.get('project_id'))).fetchall()
-    return [{'id':row['id'],**row['body']} for row in reversed(rows)]
+    return [get(owner,row['id'],'document') for row in reversed(rows)]
 
 def business_context(owner,conversation):
     context={'goal':conversation.get('goal','')}
@@ -190,6 +207,8 @@ def business_context(owner,conversation):
     return context
 
 def analyze(documents, query="business feedback onboarding conversion"):
+    from backend.commerce import report as commerce_report
+    commerce=commerce_report(documents)
     facts, evidence = [], []
     for doc in documents:
         if doc['name'].lower().endswith('.csv'):
@@ -205,11 +224,13 @@ def analyze(documents, query="business feedback onboarding conversion"):
         else:
             evidence.append({'source': doc['name'], 'excerpt': doc['content'][:1800], 'classification': 'user-provided, unverified'})
     evidence = retrieve(documents, query)
-    if not facts and not evidence:
-        raise HTTPException(422, 'Upload a TXT document or CSV with period, visits, paid columns first')
+    if not facts and not evidence and not commerce:
+        raise HTTPException(422, 'Upload sales CSV (order_id, product_id/sku, quantity, unit_price), catalog CSV (product_id/sku, name, price), text evidence, or a period/visits/paid funnel CSV first')
+    if commerce:
+        evidence.insert(0,{'source':commerce['primary']['source'],'citation':commerce['primary']['citation'],'excerpt':json.dumps(commerce['primary']),'score':1,'classification':'SQL-calculated observations from user-provided business data'})
     decline=len(facts)>=2 and facts[-1]['conversion']<facts[0]['conversion']
     hypothesis=('Conversion is lower in the final uploaded row. Investigate onboarding friction as one unvalidated possibility; row order does not establish chronology or causality.' if decline else 'No causal explanation has been established. Validate the supplied evidence before choosing an intervention.')
-    return {'facts': facts[:100], 'evidence': evidence, 'themes':signals(documents), 'hypothesis': hypothesis, 'plan': ('Create an internal brief to interview customers about onboarding friction and design a controlled experiment.' if decline else 'Create an internal brief to validate the strongest evidence and define a measurable experiment.'), 'recommendation_kind':'Rule-based starting point, not a model-validated recommendation', 'success_metric': ('Compare paid / visits over a predefined 14-day observation period with an appropriate control. No improvement has been measured.' if facts else 'Define an observable outcome and collect a baseline before running an experiment. No business improvement has been measured.'), 'market_research': 'No market research was included in this analysis.'}
+    return {**({'commerce':commerce} if commerce else {}),'facts': facts[:100], 'evidence': evidence, 'themes':signals(documents), 'hypothesis': hypothesis, 'plan': ('Create an internal brief to interview customers about onboarding friction and design a controlled experiment.' if decline else 'Create an internal brief to validate the strongest evidence and define a measurable experiment.'), 'recommendation_kind':'Rule-based starting point, not a model-validated recommendation', 'success_metric': ('Compare dated, nonoverlapping sales snapshots using available gross/net sales, distinct orders and the corresponding average order value; keep gross and net definitions separate; validate equal coverage and use an appropriate control before attributing lift.' if commerce and commerce['primary']['kind']=='sales' else 'Collect dated sales lines before measuring sales impact; catalog prices are not realized revenue.' if commerce else 'Compare paid / visits over a predefined 14-day observation period with an appropriate control. No improvement has been measured.' if facts else 'Define an observable outcome and collect a baseline before running an experiment. No business improvement has been measured.'), 'market_research': 'No market research was included in this analysis.'}
 
 async def model_summary(report,question,mode='provider'):
     # The compatibility endpoint shares the same tenant routing and data gateway.
@@ -225,7 +246,7 @@ async def run(id: str, body: Message, owner=Depends(auth)):
     with model_access.model_scope(owner,'business_analyst'):
         POLICY.data(owner,convo,model_access.effective_mode(body.mode))
     report = analyze(docs, body.text)
-    events = [{'stage':'observe','detail':f'Read {len(docs)} authorized documents'}, {'stage':'analyze','detail':f"Calculated {len(report['facts'])} conversion observations"}]
+    events = [{'stage':'observe','detail':f'Read {len(docs)} authorized documents'}, {'stage':'analyze','detail':f"Calculated e-commerce metrics from structured sales/catalog data" if report.get('commerce') else f"Calculated {len(report['facts'])} conversion observations"}]
     execution = save(owner, 'execution', {'conversation':id, 'state':'RUNNING','events':events,'report':report})
     try:
         with model_access.model_scope(owner,'business_analyst'),model_access.model_data_scope(convo):
@@ -253,9 +274,10 @@ def stream(id: str, owner=Depends(auth)):
             yield 'data: '+json.dumps(event)+'\n\n'
     return StreamingResponse(emit(),media_type='text/event-stream')
 
-@app.post('/api/executions/{id}/decision')
-def decide(id: str, decision: Decision, owner=Depends(auth)):
+def commit_decision(id: str, decision: Decision, owner):
     POLICY.require(owner,'approve')
+    from backend.agent_memory import reject_secrets
+    reject_secrets(decision.plan)
     checked=get(owner,id,'execution')
     if checked.get('engine') in ('graph','langgraph_discussion'):raise HTTPException(409,'Use the specialized harness or discussion approval endpoint for this execution')
     # Row lock makes approval and execution one atomic, replay-safe transaction.
@@ -273,17 +295,32 @@ def decide(id: str, decision: Decision, owner=Depends(auth)):
         if decision.approve:
             artifact = str(uuid4())
             selected=next((r for r in (run.get('report') or {}).get('recommendations',[]) if r['id']==decision.recommendation_id),None)
+            if selected is None and (run.get('report') or {}).get('commerce'):
+                selected=next(iter(run['report'].get('recommendations',[])),None)
             facts=(run.get('report') or {}).get('facts',[])
+            commerce_baseline=(run.get('report') or {}).get('commerce',{}).get('primary')
             titles=selected['tasks'] if selected else ['Validate the cited evidence and record a baseline','Review the approved plan: '+decision.plan[:300],'Measure the experiment outcome and document limitations']
             task_ids=[]
             for title in titles:
                 task_id=str(uuid4());task_ids.append(task_id)
                 c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(task_id,owner,'task',json.dumps({'title':title,'status':'todo','artifact':artifact,'execution':id,'conversation':run['conversation'],'notes':'','created_at':datetime.now(timezone.utc).isoformat()})))
-            c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(artifact,owner,'artifact',json.dumps({'plan':decision.plan,'execution':id,'conversation':run['conversation'],'type':'internal experiment brief','tasks':task_ids,'baseline':facts[-1] if facts else None,'recommendation':selected,'outcome':'Internal tasks created; business impact not yet measured.'})))
+            c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(artifact,owner,'artifact',json.dumps({'plan':decision.plan,'execution':id,'conversation':run['conversation'],'type':'internal experiment brief','tasks':task_ids,'baseline':facts[-1] if facts else None,'commerce_baseline':commerce_baseline,'recommendation':selected,'outcome':'Internal tasks created; business impact not yet measured.'})))
+            verified=c.execute("SELECT count(*) AS count FROM records WHERE owner=%s AND kind='task' AND body->>'artifact'=%s AND body->>'execution'=%s",(owner,artifact,id)).fetchone()['count']
+            if verified!=len(task_ids):raise HTTPException(500,'Task verification failed; action rolled back')
+            result={'tool':'create_experiment_brief','status':'succeeded','effect':'internal_write','artifact_id':artifact,'task_ids':task_ids,'verified_task_count':verified,'executed_at':datetime.now(timezone.utc).isoformat(),'external_effect':'No store, advertising account or external system was changed'}
+            run['execution_result']=result
+            c.execute("UPDATE records SET body=body || %s::jsonb WHERE owner=%s AND id=%s",(json.dumps({'execution_result':result}),owner,artifact))
             run['artifact'] = artifact
         run['events'].append({'stage':run['state'].lower(),'detail':'Approved brief and internal tasks persisted atomically' if decision.approve else 'Action rejected'})
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(run),id))
     return {'id':id,**run}
+
+@app.post('/api/executions/{id}/decision')
+async def decide(id: str, decision: Decision, owner=Depends(auth)):
+    POLICY.require(owner,'approve')
+    if not decision.approve:return commit_decision(id,decision,owner)
+    context=ToolContext(owner,permissions=frozenset({'workspace.read','workspace.write'}),approved=True,idempotency_key=id)
+    return await TOOL_PLUGINS.invoke(owner,'create_experiment_brief',{'execution_id':id,'plan':decision.plan,'recommendation_id':decision.recommendation_id},context,approved=True)
 
 @app.get('/api/artifacts/{id}')
 def artifact(id:str,owner=Depends(auth)):
@@ -291,14 +328,17 @@ def artifact(id:str,owner=Depends(auth)):
 
 @app.get('/api/integrations')
 def integrations(owner=Depends(auth)):
-    return [{'name':'OpenAI','configured':bool(os.getenv('MODEL_API_KEY'))}, {'name':'Public discussion discovery','configured':True}, {'name':'Local MCP strategy toolkit','configured':True}]
+    return [{'name':'OpenAI','configured':bool(os.getenv('MODEL_API_KEY')),'status':'Credentials configured; connectivity requires a successful test' if os.getenv('MODEL_API_KEY') else 'No service credential configured'}, {'name':'Public discussion discovery','configured':True,'status':'Available without credentials; a research run verifies access'}, {'name':'Local MCP strategy toolkit','configured':True,'status':'Bundled adapter; successful workflow calls verify operation'}]
 
 class ResearchQuery(BaseModel):
     query: str = Field(min_length=3,max_length=200)
 
 @app.post('/api/conversations/{id}/research')
-async def research(id:str, body:ResearchQuery, owner=Depends(auth)):
+async def research(id:str, body:ResearchQuery, owner=Depends(auth),append_message:bool=True):
     convo=get(owner,id,'conversation')
+    POLICY.data(owner,convo,'research')
+    from backend.agent_memory import reject_secrets
+    reject_secrets(body.query)
     try:
         async with httpx.AsyncClient(timeout=15,follow_redirects=False) as client:
             response=await client.get('https://hn.algolia.com/api/v1/search',params={'query':body.query,'tags':'story','hitsPerPage':5})
@@ -310,8 +350,12 @@ async def research(id:str, body:ResearchQuery, owner=Depends(auth)):
         raise HTTPException(502,'Public research source unavailable. Check access to hn.algolia.com; no research claims were generated.')
     sources=[{'title':str(h.get('title','Untitled'))[:500], 'url':'https://news.ycombinator.com/item?id='+str(h['objectID']), 'publication_date':h.get('created_at'), 'retrieved_at':datetime.now(timezone.utc).isoformat(), 'classification':'Public discussion excerpts and opinions; not verified market facts','excerpts':excerpts.get(str(h['objectID']),[])} for h in hits if str(h.get('objectID','')).isdigit()]
     record=save(owner,'research',{'conversation':id,'query':body.query,'sources':sources})
-    convo['messages'].append({'role':'assistant','sources':sources,'text':'Public discussion research for: '+body.query+'\n\n'+'\n'.join(s['title']+'\n'+s['url'] for s in sources)+'\n\nThese are discussion leads, not verified market claims. Research ID: '+record['id']})
-    save(owner,'conversation',{k:v for k,v in convo.items() if k!='id'},id)
+    if append_message:
+        with conn() as c:
+            row=c.execute("SELECT body FROM records WHERE owner=%s AND id=%s AND kind='conversation' FOR UPDATE",(owner,id)).fetchone()
+            current=row['body']
+            current['messages'].append({'role':'assistant','sources':sources,'text':'Public discussion research for: '+body.query+'\n\n'+'\n'.join(s['title']+'\n'+s['url'] for s in sources)+'\n\nThese are discussion leads, not verified market claims. Research ID: '+record['id']})
+            c.execute('UPDATE records SET body=%s WHERE owner=%s AND id=%s',(json.dumps(current),owner,id))
     return record
 
 @app.get('/api/tools')
@@ -322,6 +366,7 @@ class Business(BaseModel):
     name: str = Field(min_length=1,max_length=100)
     product: str = Field(default='',max_length=1000)
     goal: str = Field(default='Improve paid conversion',min_length=1,max_length=1000)
+    kind: Literal['general','ecommerce']='general'
 
 @app.get('/api/businesses')
 def businesses(owner=Depends(auth)):
@@ -381,12 +426,15 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
             await asyncio.sleep(0)
             convo=get(owner,conversation,'conversation')
             workflow=execution.get('workflow') or {}
-            if workflow.get('research'):
+            research_status={'status':'not_requested','detail':'No live research requested for this run'}
+            if workflow.get('research') or execution.get('public_research'):
                 checkpoint('research','Discovering public discussion sources for this workflow')
                 try:
-                    await research(conversation,ResearchQuery(query=question[:200]),owner)
+                    researched=await research(conversation,ResearchQuery(query=execution.get('market_query') or question[:200]),owner,append_message=False)
+                    research_status={'status':'succeeded','research_id':researched['id'],'query':researched['query']}
                     convo=get(owner,conversation,'conversation')
                 except Exception:
+                    research_status={'status':'unavailable','detail':'Public discussion source unavailable; no fresh external result was inferred'}
                     checkpoint('research_unavailable','External research is unavailable; continuing with uploaded evidence')
             docs=scoped_documents(owner,convo)
             if execution.get('report',{} ) and execution['report'].get('recommendations'):
@@ -398,11 +446,18 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
                 report=await REGISTRY.invoke(tool_name,{'conversation_id':conversation,'query':question},context)
                 events.extend(context.trace)
                 report['evidence']=report['evidence'][:workflow.get('citations',5)]
+                if execution.get('context_tools'):
+                    from backend.evidence_tools import collect
+                    trace_start=len(context.trace)
+                    extra,statuses=await collect(TOOL_PLUGINS,owner,convo,[ContextCall.model_validate(v) for v in execution['context_tools']],context)
+                    events.extend(context.trace[trace_start:])
+                    report['evidence']+=extra;report['connector_status']=statuses
+                    checkpoint('context','Read selected registered tools through the shared policy gateway',report=report)
                 report['business_context']=business_context(owner,convo)
                 report['knowledge_scope']='Current attachments' if convo.get('files') else 'Prior uploaded evidence from this business and project'
                 with conn() as c:
                     prior_research=c.execute("SELECT body FROM records WHERE owner=%s AND kind='research' AND body->>'conversation'=%s ORDER BY created DESC LIMIT 1",(owner,conversation)).fetchone()
-                if prior_research:report['market_sources']=prior_research['body']['sources']
+                if prior_research and research_status['status']!='unavailable':report['market_sources']=prior_research['body']['sources']
                 if execution.get('analysis_kind')=='operations':
                     from backend.operations import proposals as operational_proposals
                     proposals=operational_proposals(report)
@@ -421,14 +476,15 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
                 report['plan']=report['recommendations'][0]['title']+': '+report['recommendations'][0]['rationale']
                 checkpoint('strategy','Prioritized evidence-linked proposals through the shared tool registry',report=report)
             report['business_context']=business_context(owner,convo)
+            report['research_status']=research_status
             with conn() as c:
                 latest=c.execute("SELECT body FROM records WHERE owner=%s AND kind='research' AND body->>'conversation'=%s ORDER BY created DESC LIMIT 1",(owner,conversation)).fetchone()
-            if latest:
+            if latest and research_status['status']!='unavailable':
                 report['market_sources']=latest['body']['sources']
                 report['market_research']='Includes prior public discussion discovery; these sources are unverified discussion leads, not established market facts.'
             checkpoint('retrieve',f"Retrieved {len(report['evidence'])} passages with source offsets",report=report)
             await asyncio.sleep(0)
-            checkpoint('analyze',f"Calculated {len(report['facts'])} conversion observations")
+            checkpoint('analyze',f"Calculated e-commerce metrics from structured sales/catalog data" if report.get('commerce') else f"Calculated {len(report['facts'])} conversion observations")
             checkpoint('respond',('Generating with local AI on this machine' if mode=='local' else ('Requesting selected provider: '+mode if mode!='evidence' else 'Rendering deterministic evidence; no model is called')))
             output=''
             try:
@@ -483,6 +539,12 @@ async def launch(id:str,body:Message,owner=Depends(auth)):
         # The centralized data policy resolves the configured model route below.
     from backend.model_access import model_scope,effective_mode
     with model_scope(owner,'business_analyst'):POLICY.data(owner,convo,effective_mode(body.mode))
+    from backend.evidence_tools import validate as validate_context
+    validate_context(TOOL_PLUGINS,owner,convo,body.context_tools)
+    if body.public_research or (workflow and workflow.get('research')):
+        POLICY.data(owner,convo,'research')
+        if body.public_research and len(body.market_query.strip())<3:raise HTTPException(422,'Enter an explicit public research query (3–200 characters)')
+        reject_secrets(body.market_query)
     # Preflight catches invalid evidence before creating a background execution.
     analyze(scoped_documents(owner,convo),body.text)
     if len(JOBS)>=4:raise HTTPException(429,'Four analyses are already running; wait for a slot')
@@ -492,7 +554,7 @@ async def launch(id:str,body:Message,owner=Depends(auth)):
         active=c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('CREATED','RUNNING')",(owner,id)).fetchone()
         if active:raise HTTPException(409,'This conversation already has a running analysis')
         execution_id=str(uuid4())
-        execution={'conversation':id,'state':'CREATED','events':[],'output':'','question':body.text,'mode':body.mode,'allow_fallback':body.allow_fallback,'workflow':workflow,'analysis_kind':body.analysis_kind,'actor':POLICY.principal(owner).account,'report':None}
+        execution={'conversation':id,'state':'CREATED','events':[],'output':'','question':body.text,'mode':body.mode,'allow_fallback':body.allow_fallback,'workflow':workflow,'context_tools':[v.model_dump() for v in body.context_tools],'public_research':body.public_research,'market_query':body.market_query,'analysis_kind':body.analysis_kind,'actor':POLICY.principal(owner).account,'report':None}
         c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(execution_id,owner,'execution',json.dumps(execution)))
         convo['messages'] += [{'role':'user','text':body.text},{'role':'assistant','text':'Analysis in progress…','execution':execution_id}]
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(convo),id))
@@ -836,3 +898,35 @@ from backend.growth import install as install_growth
 install_growth(app,auth,{name:globals()[name] for name in ('get','save','listing','POLICY','TOOL_PLUGINS')},MEMORY)
 from backend.oauth import install as install_oauth
 install_oauth(app,conn,auth)
+
+
+class BriefActionInput(BaseModel):
+    model_config={'extra':'forbid'}
+    execution_id:str
+    plan:str=Field(min_length=1,max_length=4000)
+    recommendation_id:str|None=None
+class BriefActionOutput(BaseModel):
+    model_config={'extra':'allow'}
+    id:str
+    state:str
+async def create_experiment_brief_tool(arguments,context):
+    from backend.agent_memory import reject_secrets
+    reject_secrets(arguments.plan)
+    if not context.approved:raise HTTPException(403,'Server-issued approval is required')
+    return commit_decision(arguments.execution_id,Decision(approve=True,plan=arguments.plan,recommendation_id=arguments.recommendation_id),context.owner)
+REGISTRY.register(Tool('create_experiment_brief','Create and verify tracked internal experiment tasks after explicit approval; never changes an external store',BriefActionInput,BriefActionOutput,create_experiment_brief_tool,permission='workspace.write',risk='internal_write',timeout=10,idempotent=True))
+
+@app.get('/api/documents/{id}/commerce')
+def commerce_dataset(id:str,owner=Depends(auth)):
+    document=get(owner,id,'document')
+    if not document.get('commerce'):raise HTTPException(422,'This document has no validated e-commerce import')
+    return document['commerce']
+
+@app.get('/api/documents/{id}/commerce/rows')
+def commerce_rows(id:str,offset:int=0,limit:int=50,owner=Depends(auth)):
+    document=get(owner,id,'document')
+    if not document.get('commerce'):raise HTTPException(422,'This document has no validated e-commerce import')
+    if offset<0 or not 1<=limit<=100:raise HTTPException(422,'Use a nonnegative offset and limit 1–100')
+    table='commerce_sales' if document['commerce']['kind']=='sales' else 'commerce_catalog'
+    with conn() as c:rows=c.execute('SELECT * FROM '+table+' WHERE document_id=%s ORDER BY row_number LIMIT %s OFFSET %s',(id,limit,offset)).fetchall()
+    return {'dataset_id':id,'rows':[{k:(str(v) if isinstance(v,__import__('decimal').Decimal) else v.isoformat() if isinstance(v,__import__('datetime').date) else v) for k,v in row.items()} for row in rows]}

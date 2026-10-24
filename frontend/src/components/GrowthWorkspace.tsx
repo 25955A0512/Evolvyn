@@ -1,3 +1,5 @@
+import { CommerceMetrics } from "./CommerceMetrics";
+import { ToolAccess, parseCalls, type ManageConnections } from "./ToolAccess";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { client } from "../api";
@@ -8,11 +10,13 @@ export function GrowthWorkspace({
   conversation,
   projectId,
   businessId,
+  onManage,
 }: {
   api: API;
   conversation: Convo | null;
   projectId: string;
   businessId: string;
+  onManage: ManageConnections;
 }) {
   const [reports, setReports] = useState<any[]>([]),
     [report, setReport] = useState<any>(null),
@@ -27,6 +31,7 @@ export function GrowthWorkspace({
     [ack, setAck] = useState(false),
     [files, setFiles] = useState<any[]>([]),
     [contextTools, setContextTools] = useState<any[]>([]);
+  const [contextJson, setContextJson] = useState("[]");
   const watch = useRef<AbortController | null>(null);
   useEffect(() => {
     Promise.all([
@@ -85,6 +90,14 @@ export function GrowthWorkspace({
           {notice}
         </p>
       )}
+      <ToolAccess
+        api={api}
+        onManage={onManage}
+        inline
+        calls={parseCalls(contextJson)}
+        onChange={(v) => setContextJson(JSON.stringify(v))}
+        conversationId={conversationId}
+      />
       <div className="studio-two-columns">
         <form
           className="studio-card studio-form"
@@ -206,7 +219,8 @@ export function GrowthWorkspace({
               Read-only calls JSON
               <textarea
                 name="context_tools"
-                defaultValue="[]"
+                value={contextJson}
+                onChange={(e) => setContextJson(e.target.value)}
                 placeholder='[{"name":"crm_feedback","arguments":{}}]'
               />
             </label>
@@ -317,45 +331,51 @@ export function GrowthWorkspace({
               <p>{report.market.classification}</p>
             )}
             <h3>First-party observations</h3>
-            {report.first_party_change?.status === "available" && (
-              <div className="growth-metrics">
-                <div>
-                  <strong>
-                    {report.first_party_change.visits_change_percent}%
-                  </strong>
-                  <span>Visits change</span>
-                </div>
-                <div>
-                  <strong>
-                    {report.first_party_change.paid_outcomes_change_percent ===
-                    null
-                      ? "No baseline"
-                      : report.first_party_change.paid_outcomes_change_percent +
-                        "%"}
-                  </strong>
-                  <span>Paid outcomes change</span>
-                </div>
-                <div>
-                  <strong>
-                    {
-                      report.first_party_change
-                        .conversion_change_percentage_points
-                    }{" "}
-                    pp
-                  </strong>
-                  <span>Conversion change</span>
-                </div>
-              </div>
+            {report.report.commerce && (
+              <CommerceMetrics data={report.report.commerce.primary} />
             )}
-            {report.first_party_change && (
+            {!report.report.commerce &&
+              report.first_party_change?.status === "available" && (
+                <div className="growth-metrics">
+                  <div>
+                    <strong>
+                      {report.first_party_change.visits_change_percent}%
+                    </strong>
+                    <span>Visits change</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {report.first_party_change
+                        .paid_outcomes_change_percent === null
+                        ? "No baseline"
+                        : report.first_party_change
+                            .paid_outcomes_change_percent + "%"}
+                    </strong>
+                    <span>Paid outcomes change</span>
+                  </div>
+                  <div>
+                    <strong>
+                      {
+                        report.first_party_change
+                          .conversion_change_percentage_points
+                      }{" "}
+                      pp
+                    </strong>
+                    <span>Conversion change</span>
+                  </div>
+                </div>
+              )}
+            {!report.report.commerce && report.first_party_change && (
               <p>{report.first_party_change.classification}</p>
             )}
-            {!report.report.facts?.length && !report.report.themes?.length && (
-              <p>
-                No measurable first-party baseline found. Upload evidence before
-                inferring product growth.
-              </p>
-            )}
+            {!report.report.commerce &&
+              !report.report.facts?.length &&
+              !report.report.themes?.length && (
+                <p>
+                  No measurable first-party baseline found. Upload evidence
+                  before inferring product growth.
+                </p>
+              )}
             {report.report.facts?.slice(0, 10).map((f: any, i: number) => (
               <p key={i}>
                 {f.source}: {f.conversion}% conversion ({f.paid} / {f.visits})

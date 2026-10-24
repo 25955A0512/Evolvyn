@@ -68,6 +68,11 @@ def install(app,services):
         artifact=get(owner,id,'artifact')
         document=get(owner,body.document_id,'document')
         if document['conversation']!=artifact.get('conversation'):raise HTTPException(422,'Measurement evidence must belong to the same conversation')
+        if artifact.get('commerce_baseline'):
+            from backend.commerce import compare
+            if not document.get('commerce'):raise HTTPException(422,'Follow-up requires a validated sales CSV')
+            record=compare(artifact['commerce_baseline'],document['commerce'])
+            return save(owner,'measurement',{**record,'artifact':id,'conversation':artifact['conversation'],'notes':body.notes,'measured_at':datetime.now(timezone.utc).isoformat()})
         if not document['name'].lower().endswith('.csv'):raise HTTPException(422,'Measurement requires a CSV with period,visits,paid columns')
         report=analyze([document],'measure conversion')
         if not report['facts'] or not artifact.get('baseline'):raise HTTPException(422,'A numerical baseline and follow-up observation are required')

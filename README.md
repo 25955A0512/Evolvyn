@@ -65,6 +65,26 @@ Open **Discussion room**, choose or create an evidence conversation, upload CRM 
 
 The generated starter implements accounts and private entity CRUD. Feature requests outside those adapters are shown as pending requirements. The prototype uses Evolvyn workspace storage; arbitrary generated code is not run in the platform API. Unrestricted code execution, additional stacks and automatic cloud deployment need a separate sandbox/broker. See [implemented modern stack](docs/MODERN_STACK.md) and [cloud recommendation](docs/CLOUD_DEPLOYMENT.md).
 
+## E-commerce: one complete workflow in the existing chat
+
+Create an **E-commerce** business using **Add business**. Upload a supported sales CSV or product catalog in the chat composer. No separate dashboard or new navigation module is needed.
+
+- Try the explicitly synthetic [sales example](sample-data/ecommerce-sales.csv), [catalog](sample-data/ecommerce-catalog.csv) and [follow-up sales](sample-data/ecommerce-followup.csv).
+- Sales headers: `order_id,product_id,quantity,unit_price`, with optional `product_name,line_id,order_date,currency,status,discount,refund`. Common aliases include `sku`, `qty`, `price` and `name`. Monetary adjustments are line amounts. Currency is not inferred. Net revenue/net AOV require explicit discount and refund data; otherwise only gross measures are available. One currency per snapshot; at most 5,000 rows/2 MB. Invalid/ambiguous lines are rejected, not silently skipped.
+- Catalog headers: `product_id,product_name,unit_price` (or `sku,name,price`), optionally `inventory`/`stock` and `currency`. Catalog prices are not realized sales.
+- Ask about revenue, orders, AOV and product performance. Choose **Evidence only** to verify the deterministic path without any model key. The response includes SQL-calculated metrics, definitions, missing data, citations and an explicit proposed investigation.
+- Use **Connections & tools** in chat to select registered read-only MCP tools. The same connections are accessible from development, discussion and growth screens. **Market research options** can fetch actual public discussion sources using an explicit public query. An outage is labeled and does not invent market evidence or block internal analysis. These discussions are not verified competitor prices or market-share data.
+- Approve the proposed action to invoke the registered tool that creates and verifies real internal tasks and a brief. Its execution receipt states exactly what was written. No external store, ad account or CRM is changed.
+- Upload a new dated follow-up sales snapshot, then open **Saved reports & outcomes**. Compare against the stored baseline. The endpoint rejects a renamed baseline, overlapping/undated periods and currency mismatch; duration/coverage and causal limits are shown.
+
+**Agent control center** is the shared configuration and operations area: connect/discover MCP servers, register tools, inspect workflow/approval history and set permissions. Configure a connection there once, then use it where you work through **Connections & tools**. Valid credentials and a successful check are required to claim a live third-party connection.
+
+See the [implementation audit and execution trace](docs/ECOMMERCE_AUDIT.md) for actual gaps, metric definitions, supported actions, verification and remaining integration limits. CSVs uploaded before this importer should be re-uploaded to create structured datasets. Merchant-specific column formats need a mapping adapter; native Shopify/social/ad integrations have not been claimed connected.
+
+![E-commerce analysis in the existing conversation](docs/screenshots/ecommerce-analysis.png)
+
+![Saved follow-up comparison](docs/screenshots/ecommerce-outcome.png)
+
 ## Connected growth, canvas and product runtime
 
 Open **Build a product** (or **Grow your business**) and use the studio navigation:
@@ -147,11 +167,12 @@ EVOLVYN_TEST_URL=http://localhost:3000 python3 tests/e2e_account.py
 python3 tests/e2e_control_center.py
 python3 tests/e2e_studio.py
 python3 tests/e2e_evolution.py
+python3 tests/e2e_commerce.py
 .venv/bin/python tests/live_exported_runtime.py
 bash scripts/backup.sh
 ```
 
-103 automated tests pass against an isolated temporary PostgreSQL schema. Chromium validated account creation, private uploads, analysis/approval, refresh persistence, team access, canvas editing and a saved workflow running with its configured recommendation count. Docker images build and all three services pass readiness. Public research also succeeds through the container's configured proxy. Actual local inference and model-generated recommendations passed earlier acceptance runs. The most recent strict local-AI acceptance run rejected structured proposals and used the labeled heuristic fallback; that strict check failed. A subsequent deterministic upload/analysis/approval/task run passed. Public Internet hosting has not been performed.
+130 automated tests pass against an isolated temporary PostgreSQL schema. Chromium validated account creation, private uploads, analysis/approval, refresh persistence, team access, canvas editing and a saved workflow running with its configured recommendation count. Docker images build and all three services pass readiness. Public research also succeeds through the container's configured proxy. Actual local inference and model-generated recommendations passed earlier acceptance runs. The most recent strict local-AI acceptance run rejected structured proposals and used the labeled heuristic fallback; that strict check failed. A subsequent deterministic upload/analysis/approval/task run passed. Public Internet hosting has not been performed.
 
 Backups keep the development database and Compose data separately in ignored mode-0600 files. An empty Compose database is restored by the deploy script; existing records are not overwritten. Protect backups as business data. Cloud publication and restoration in a new task remain separate, unverified platform steps.
 
@@ -161,4 +182,6 @@ Remote MCP credentials are optional. Add the hostname in Governance, register it
 
 Current studio acceptance: the generated FastAPI application was executed with private-account CRUD tests; a generated React frontend compiled; the generated Express backend ran against an isolated real PostgreSQL schema and passed account/CRUD/isolation checks. The full studio browser flow passed on desktop and mobile. Four actual local Qwen specialists completed LangGraph handoffs without fallback in 134 seconds; the reviewer flagged a missing citation, leaving a human review gate. Optional remote model credentials and third-party CRM/social MCP services have not been live-validated.
 
-Latest connected-runtime acceptance: **103 tests passed** against isolated PostgreSQL schemas. The growth/canvas browser journey exercised upload, specialist handoffs and decision approval, page drawing, visual node connections, workflow approval/resume, tool ontology filtering, runtime source download, reload persistence and mobile layout. Existing account, studio and registry/governance browser regressions also passed. Exported product and agent-console frontends compiled; the exported API ran independently, discovered and invoked a real stdio MCP tool, enforced a tool denial, and generated a complete nested product export. The live public research connection returned actual indexed discussion counts; these were not treated as market-growth facts.
+Previous connected-runtime acceptance: **103 tests passed** against isolated PostgreSQL schemas. The growth/canvas browser journey exercised upload, specialist handoffs and decision approval, page drawing, visual node connections, workflow approval/resume, tool ontology filtering, runtime source download, reload persistence and mobile layout. Existing account, studio and registry/governance browser regressions also passed. Exported product and agent-console frontends compiled; the exported API ran independently, discovered and invoked a real stdio MCP tool, enforced a tool denial, and generated a complete nested product export. The live public research connection returned actual indexed discussion counts; these were not treated as market-growth facts.
+
+Latest e-commerce acceptance: **130 tests passed** with independent per-test PostgreSQL schemas. The live Chromium chat journey passed business creation, structured sales import, exact SQL metrics, real bundled MCP context, successful live public-source research, proposal/approval, verified internal task creation, follow-up comparison, reload persistence and mobile layout. Existing account, registry/governance and product-studio browser flows also passed. See [ECOMMERCE_AUDIT.md](docs/ECOMMERCE_AUDIT.md). Test-file revenue changes are observations, not claimed business lift.

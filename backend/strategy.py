@@ -2,6 +2,9 @@
 from uuid import uuid4
 
 def recommendations(report):
+    if report.get('commerce'):
+        from backend.commerce import proposals
+        return proposals(report)
     facts=report['facts']; evidence=report['evidence']
     sources=[f['source'] for f in facts[-2:]]+[e.get('citation',e['source']) for e in evidence[:2]]
     themes=report.get('themes',[])

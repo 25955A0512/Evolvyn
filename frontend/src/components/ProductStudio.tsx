@@ -1,3 +1,4 @@
+import { ToolAccess, type ManageConnections } from "./ToolAccess";
 import { useEffect, useState } from "react";
 import {
   ArrowUp,
@@ -174,9 +175,11 @@ function ProductPreview({ api, build }: { api: API; build: any }) {
 export function ProductStudio({
   api,
   projectId,
+  onManage,
 }: {
   api: API;
   projectId: string;
+  onManage: ManageConnections;
 }) {
   const [decisions, setDecisions] = useState<any[]>([]);
   const [products, setProducts] = useState<any[]>([]),
@@ -221,6 +224,7 @@ export function ProductStudio({
   return (
     <div className="studio-page">
       <div className="studio-page-title">
+        <ToolAccess api={api} onManage={onManage} inline />
         <span className="eyebrow">PRODUCT STUDIO</span>
         <h1>From an idea to something real.</h1>
         <p>

@@ -44,10 +44,14 @@ async def public_windows(query,days):
 
 def actions(report,market):
     rows=[]
+    if report.get('commerce'):
+        from backend.commerce import proposals
+        for index,item in enumerate(proposals(report)):
+            rows.append({'id':'commerce_'+str(index),'title':item['title'],'type':'product','evidence':item['evidence'],'suggestion':item['rationale'],'metric':report['success_metric'],'confidence':'Observed sales contribution; proposed intervention is an unvalidated hypothesis'})
     for index,theme in enumerate(report.get('themes',[])[:4]):
         rows.append({'id':'feedback_'+str(index),'title':'Validate '+theme['label'].lower(),'type':'product','evidence':theme.get('sources',[]),'suggestion':'Interview affected customers, reproduce the reported friction, and scope a small product change before committing to a broad feature.','metric':'Baseline the affected task completion and support volume; compare after a controlled release.','confidence':'Keyword signal; qualitative validation required'})
     rows.append({'id':'promotion','title':'Test a targeted educational campaign','type':'marketing','evidence':[s['citation'] for s in market.get('current',{}).get('sources',[])[:3]],'suggestion':'Choose one audience and channel from verified customer interviews. Test a helpful use-case demo with a tagged landing page and a small fixed budget; compare qualified activation against a baseline.','metric':'Qualified activated accounts per campaign cost; stop if acquisition quality or privacy constraints fail.','confidence':'Experiment hypothesis, not a proven promotion strategy'})
-    if not report.get('facts') and not report.get('themes'):rows.append({'id':'baseline','title':'Collect product and customer baselines','type':'measurement','evidence':[],'suggestion':'Upload dated funnel exports, retention cohorts and consented customer feedback. A public discussion count cannot show whether this product is growing.','metric':'Weekly activation, retention and recurring revenue measured from first-party data.','confidence':'Insufficient first-party evidence'})
+    if not report.get('commerce') and not report.get('facts') and not report.get('themes'):rows.append({'id':'baseline','title':'Collect product and customer baselines','type':'measurement','evidence':[],'suggestion':'Upload dated funnel exports, retention cohorts and consented customer feedback. A public discussion count cannot show whether this product is growing.','metric':'Weekly activation, retention and recurring revenue measured from first-party data.','confidence':'Insufficient first-party evidence'})
     return rows
 
 def measured_change(facts):

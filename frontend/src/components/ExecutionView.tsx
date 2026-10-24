@@ -120,6 +120,20 @@ export function ExecutionView({
             </div>
           </div>
         )}
+      {run.execution_result && (
+        <section className="execution-result" role="status">
+          <strong>Verified execution: {run.execution_result.tool}</strong>
+          <p>
+            {run.execution_result.status} ·{" "}
+            {run.execution_result.verified_task_count} tracked tasks persisted
+            and verified.
+          </p>
+          <p>{run.execution_result.external_effect}</p>
+          <small>
+            {new Date(run.execution_result.executed_at).toLocaleString()}
+          </small>
+        </section>
+      )}
       {run.artifact && (
         <button className="success" onClick={() => onArtifact(run.artifact!)}>
           ✓ Open saved experiment brief →

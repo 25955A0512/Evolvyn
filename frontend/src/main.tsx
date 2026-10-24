@@ -17,6 +17,7 @@ import {
   Brain,
   KeyRound,
 } from "lucide-react";
+import { ToolAccess, type ContextCall } from "./components/ToolAccess";
 import { client } from "./api";
 import type { Business, Convo, Run } from "./types";
 import { ReportView } from "./components/ReportView";
@@ -55,7 +56,7 @@ function App() {
   const [sidebar, setSidebar] = useState(innerWidth > 560);
   const [settings, setSettings] = useState(false);
   const [integrations, setIntegrations] = useState<
-    { name: string; configured: boolean }[]
+    { name: string; configured: boolean; status?: string }[]
   >([]);
   const [artifact, setArtifact] = useState<{
     id: string;
@@ -63,6 +64,14 @@ function App() {
     outcome: string;
   } | null>(null);
   const [controlCenter, setControlCenter] = useState(false);
+  const [controlTab, setControlTab] = useState<"servers" | "tools">("servers");
+  const [contextTools, setContextTools] = useState<ContextCall[]>([]);
+  const [publicResearch, setPublicResearch] = useState(false);
+  const [marketQuery, setMarketQuery] = useState("");
+  function manageConnections(tab: "servers" | "tools" = "servers") {
+    setControlTab(tab);
+    setControlCenter(true);
+  }
   const [studio, setStudio] = useState<StudioTab | null>(null);
   const [panel, setPanel] = useState<
     | "tasks"
@@ -191,6 +200,11 @@ function App() {
     await reload();
     return c as Convo;
   }
+  useEffect(() => {
+    setContextTools([]);
+    setPublicResearch(false);
+    setMarketQuery("");
+  }, [organization]);
   async function send() {
     if (!text.trim() || busy) return;
     setBusy(true);
@@ -204,6 +218,9 @@ function App() {
           mode,
           allow_fallback: true,
           analysis_kind: analysisKind,
+          context_tools: contextTools,
+          public_research: publicResearch,
+          market_query: marketQuery,
         }),
       });
       setRuns((prev) => ({ ...prev, [r.id]: r }));
@@ -714,7 +731,10 @@ function App() {
                   <div className="integration" key={i.name}>
                     <strong>{i.name}</strong>
                     <span>
-                      {i.configured ? "Configured" : "Not configured"}
+                      {i.status ||
+                        (i.configured
+                          ? "Configured; connectivity unverified"
+                          : "Not configured")}
                     </span>
                   </div>
                 ))}
@@ -872,6 +892,7 @@ function App() {
                     <span key={f.id}>
                       <Paperclip size={12} />
                       {f.name}
+                      {f.import && <small>Parsed {f.import.kind} data</small>}
                       <button
                         aria-label={"Remove " + f.name}
                         disabled={!!activeHere}
@@ -896,6 +917,35 @@ function App() {
                   ))}
                 </div>
               )}
+              <details className="chat-research">
+                <summary>Market research options</summary>
+                <label>
+                  <input
+                    aria-label="Include public research"
+                    type="checkbox"
+                    checked={publicResearch}
+                    onChange={(e) => setPublicResearch(e.target.checked)}
+                  />
+                  Include live public discussion research with this run
+                </label>
+                {publicResearch && (
+                  <label>
+                    Public research query
+                    <input
+                      aria-label="Public research query"
+                      value={marketQuery}
+                      onChange={(e) => setMarketQuery(e.target.value)}
+                      maxLength={200}
+                      placeholder="Public product/category terms only"
+                    />
+                    <small>
+                      This exact query is sent to Algolia/Hacker News. It is
+                      discussion evidence, not verified competitor or
+                      market-share data.
+                    </small>
+                  </label>
+                )}
+              </details>
               <textarea
                 aria-label="Message Evolvyn"
                 placeholder="What would you like to improve?"
@@ -922,6 +972,14 @@ function App() {
                     }}
                   />
                 </label>
+                <ToolAccess
+                  key={organization}
+                  api={api}
+                  onManage={manageConnections}
+                  calls={contextTools}
+                  onChange={setContextTools}
+                  conversationId={current?.id}
+                />
                 <select
                   className="mode-select"
                   aria-label="Analysis type"
@@ -994,11 +1052,12 @@ function App() {
                 .then(setCurrent)
                 .catch(handleError);
           }}
-          onManage={() => setControlCenter(true)}
+          onManage={manageConnections}
         />
       )}
       {controlCenter && (
         <AgentControlCenter
+          initialTab={controlTab}
           api={api}
           conversation={current}
           onClose={() => setControlCenter(false)}
@@ -1054,6 +1113,13 @@ function App() {
               <label>
                 Business name
                 <input autoFocus name="name" required maxLength={100} />
+              </label>
+              <label>
+                Business type
+                <select name="kind" defaultValue="ecommerce">
+                  <option value="ecommerce">E-commerce</option>
+                  <option value="general">Other business</option>
+                </select>
               </label>
               <label>
                 Product or service

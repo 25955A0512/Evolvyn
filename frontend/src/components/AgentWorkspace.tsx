@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { client } from "../api";
 import type { Convo } from "../types";
+import { type ManageConnections } from "./ToolAccess";
 import { ProductStudio } from "./ProductStudio";
 import { DiscussionRoom } from "./DiscussionRoom";
 import { DesignCanvas } from "./DesignCanvas";
@@ -716,7 +717,13 @@ function AgentCatalog({ api }: { api: API }) {
     </div>
   );
 }
-function Integrations({ api, onManage }: { api: API; onManage: () => void }) {
+function Integrations({
+  api,
+  onManage,
+}: {
+  api: API;
+  onManage: ManageConnections;
+}) {
   const [servers, setServers] = useState<any[]>([]),
     [tools, setTools] = useState<any[]>([]),
     [query, setQuery] = useState(""),
@@ -735,7 +742,7 @@ function Integrations({ api, onManage }: { api: API; onManage: () => void }) {
         <span className="eyebrow">INTEGRATIONS & CAPABILITIES</span>
         <div className="studio-card-heading">
           <h1>Connect the context that matters.</h1>
-          <button onClick={onManage}>
+          <button onClick={() => onManage()}>
             Manage MCP connections <ArrowRight size={14} />
           </button>
         </div>
@@ -793,7 +800,7 @@ function Integrations({ api, onManage }: { api: API; onManage: () => void }) {
           <div>
             <h3>Your MCP integration</h3>
             <p>Connect a CRM, social feedback or research server</p>
-            <button onClick={onManage}>Configure connection</button>
+            <button onClick={() => onManage()}>Configure connection</button>
           </div>
         </article>
       </div>
@@ -839,7 +846,7 @@ export function AgentWorkspace({
   businessId: string;
   onClose: () => void;
   onRefresh: () => void;
-  onManage: () => void;
+  onManage: ManageConnections;
 }) {
   const [tab, setTab] = useState<StudioTab>(initialTab);
   const tabs = [
@@ -886,7 +893,7 @@ export function AgentWorkspace({
             <br />
             Governed by design.
           </p>
-          <button onClick={onManage}>
+          <button onClick={() => onManage()}>
             Agent control center <ArrowRight size={13} />
           </button>
         </div>
@@ -914,6 +921,7 @@ export function AgentWorkspace({
           )}
           {tab === "growth" && (
             <GrowthWorkspace
+              onManage={onManage}
               api={api}
               projectId={projectId}
               businessId={businessId}
@@ -923,9 +931,16 @@ export function AgentWorkspace({
           {tab === "runtime" && (
             <RuntimePanel api={api} onTab={setTab} onManage={onManage} />
           )}
-          {tab === "build" && <ProductStudio api={api} projectId={projectId} />}{" "}
+          {tab === "build" && (
+            <ProductStudio
+              api={api}
+              projectId={projectId}
+              onManage={onManage}
+            />
+          )}{" "}
           {tab === "discuss" && (
             <DiscussionRoom
+              onManage={onManage}
               api={api}
               conversation={conversation}
               projectId={projectId}
@@ -958,7 +973,7 @@ function RuntimePanel({
 }: {
   api: API;
   onTab: (tab: StudioTab) => void;
-  onManage: () => void;
+  onManage: ManageConnections;
 }) {
   const [runtime, setRuntime] = useState<any>(null),
     [catalog, setCatalog] = useState<any>(null),

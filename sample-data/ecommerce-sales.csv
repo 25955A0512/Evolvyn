@@ -1,0 +1,5 @@
+order_id,line_id,order_date,product_id,product_name,quantity,unit_price,discount,refund,currency,status
+A,1,2026-09-01,TEA,Tea,2,10.10,0.20,0,USD,paid
+A,2,2026-09-01,MUG,Mug,1,20.00,0,5.00,USD,paid
+B,1,2026-09-02,TEA,Tea,1,10.10,0,0,USD,completed
+C,1,2026-09-02,MUG,Mug,10,20.00,0,0,USD,pending

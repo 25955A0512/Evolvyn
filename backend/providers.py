@@ -34,6 +34,9 @@ async def response_chunks(report, question, history, mode="provider"):
             lines.append(f"Conversion changed from {first['conversion']}% ({first['period']}) to {last['conversion']}% ({last['period']}), a {delta:+g} percentage-point change. Uploaded row order is used; dates have not been inferred.")
         elif facts:
             lines.append(f"Recorded conversion: {facts[0]['conversion']}% [{facts[0]['source']}].")
+        if report.get('commerce'):
+            from backend.commerce import summary_lines
+            lines+=summary_lines(report)
         if report.get('operations'):
             operations=report['operations']
             lines.append('**Uploaded log observations:** '+str(operations['log_analysis']['severity_counts'])+'; triage priority '+operations['alert_triage']['priority']+'. These counts are not production error rates.')
@@ -63,6 +66,9 @@ async def response_chunks(report, question, history, mode="provider"):
     if mode=='local':
         context={'facts':report['facts'][:3]+report['facts'][-3:],'evidence':[{k:(value[:700] if k=='excerpt' else value) for k,value in e.items() if k in ('source','citation','excerpt')} for e in report['evidence'][:2]],'recommendations':[{k:(value[:250] if isinstance(value,str) else value) for k,value in r.items() if k in ('title','rationale','evidence')} for r in report.get('recommendations',[])[:2]],'hypothesis':report.get('hypothesis'),'goal':str(report.get('business_context',{}))[:500]}
         context['market_sources']=[{'title':s['title'][:120],'url':s['url'],'publication_date':s.get('publication_date'),'excerpt':(s.get('excerpts') or [''])[0][:300]} for s in report.get('market_sources',[])[:2]]
+        if report.get('commerce'):
+            from backend.commerce import model_context
+            context['commerce']=model_context(report)
         report['context_policy']='Local model uses bounded excerpts and two recent messages; full source reports remain saved.'
     messages.append({'role':'user','content':json.dumps({'question':question[:1200] if mode=='local' else question,'evidence':context})})
     serialized=json.dumps(messages)

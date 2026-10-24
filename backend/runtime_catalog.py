@@ -7,6 +7,7 @@ BUILTIN_ONTOLOGY={
  'investigate_operations':(['incident','evidence'],['observe','analyze']),
  'prioritize_actions':(['recommendation'],['rank']),
  'create_internal_note':(['decision','conversation'],['create']),
+ 'create_experiment_brief':(['experiment','task'],['create','verify']),
  'build_product':(['product','source_artifact'],['build']),
  'recall_agent_memory':(['memory'],['retrieve']),
 }

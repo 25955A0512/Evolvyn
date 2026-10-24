@@ -1,4 +1,4 @@
-"""Isolate test records and startup recovery from the development application's data."""
+"""Give each test its own schema so startup recovery/schedules cannot leak across tests."""
 from uuid import uuid4
 import pytest
 import psycopg
@@ -6,7 +6,7 @@ from psycopg import sql
 from psycopg.conninfo import make_conninfo
 from backend import app as module
 
-@pytest.fixture(scope='session',autouse=True)
+@pytest.fixture(autouse=True)
 def isolated_database_schema():
     original=module.DB
     schema='test_'+uuid4().hex

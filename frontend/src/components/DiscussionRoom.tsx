@@ -1,3 +1,4 @@
+import { ToolAccess, parseCalls, type ManageConnections } from "./ToolAccess";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -17,12 +18,14 @@ export function DiscussionRoom({
   projectId,
   businessId,
   onRefresh,
+  onManage,
 }: {
   api: ReturnType<typeof client>;
   conversation: Convo | null;
   projectId: string;
   businessId: string;
   onRefresh: () => void;
+  onManage: ManageConnections;
 }) {
   const [convos, setConvos] = useState<any[]>([]),
     [conv, setConv] = useState<any>(conversation),
@@ -110,6 +113,14 @@ export function DiscussionRoom({
           {error}
         </div>
       )}
+      <ToolAccess
+        api={api}
+        onManage={onManage}
+        inline
+        calls={parseCalls(tools)}
+        onChange={(v) => setTools(JSON.stringify(v))}
+        conversationId={conv?.id}
+      />
       <div className="discussion-layout">
         <section>
           <form

@@ -1,8 +1,9 @@
+import { CommerceMetrics } from "./CommerceMetrics";
 import type { Report } from "../types";
 export function ReportView({ report }: { report: Report }) {
   return (
     <div className="report">
-      {report.knowledge_scope&&<small>{report.knowledge_scope}</small>}
+      {report.knowledge_scope && <small>{report.knowledge_scope}</small>}
       {report.strategy_fallback && (
         <p className="fallback-note">{report.strategy_fallback}</p>
       )}
@@ -14,7 +15,41 @@ export function ReportView({ report }: { report: Report }) {
       <div className="report-heading">
         BUSINESS ANALYSIS <span>Evidence-backed calculations</span>
       </div>
-      {report.operations&&<section><h3>Uploaded log investigation</h3><p>Triage: {report.operations.alert_triage.priority} · {report.operations.alert_triage.error_lines} matching error lines</p>{Object.entries(report.operations).map(([name,result])=><details key={name}><summary>{name.replaceAll("_"," ")}</summary><pre>{JSON.stringify(result,null,2)}</pre></details>)}</section>}
+      {report.operations && (
+        <section>
+          <h3>Uploaded log investigation</h3>
+          <p>
+            Triage: {report.operations.alert_triage.priority} ·{" "}
+            {report.operations.alert_triage.error_lines} matching error lines
+          </p>
+          {Object.entries(report.operations).map(([name, result]) => (
+            <details key={name}>
+              <summary>{name.replaceAll("_", " ")}</summary>
+              <pre>{JSON.stringify(result, null, 2)}</pre>
+            </details>
+          ))}
+        </section>
+      )}
+      {report.commerce && (
+        <>
+          <CommerceMetrics data={report.commerce.primary} />
+          <p className="muted">{report.commerce.selection}</p>
+        </>
+      )}
+      {report.research_status && (
+        <p>
+          Live research: {report.research_status.status}.{" "}
+          {report.research_status.detail}
+        </p>
+      )}
+      {report.connector_status?.map((s) => (
+        <p key={s.tool}>
+          Tool {s.tool}: {s.status}{" "}
+          {s.retrieved_at
+            ? "· retrieved " + new Date(s.retrieved_at).toLocaleString()
+            : s.detail}
+        </p>
+      ))}
       {report.facts.length > 0 && (
         <div className="table-wrap">
           <table>
@@ -43,7 +78,12 @@ export function ReportView({ report }: { report: Report }) {
       )}
       {report.evidence.map((e, i) => (
         <details key={i}>
-          <summary>{e.citation || e.source} · Unverified upload</summary>
+          <summary>
+            {e.citation || e.source} ·{" "}
+            {e.citation?.startsWith("commerce:")
+              ? "Calculated upload metrics"
+              : "Source evidence; verify claims"}
+          </summary>
           <p>{e.excerpt}</p>
           <small>
             Keyword relevance: {e.score ?? "not ranked"} · Retrieved content
@@ -65,7 +105,11 @@ export function ReportView({ report }: { report: Report }) {
         >
           {source.title} ↗
           <small>
-            Retrieved {new Date(source.retrieved_at).toLocaleDateString()}
+            Published{" "}
+            {source.publication_date
+              ? new Date(source.publication_date).toLocaleDateString()
+              : "date unavailable"}{" "}
+            · Retrieved {new Date(source.retrieved_at).toLocaleString()}
           </small>
         </a>
       ))}

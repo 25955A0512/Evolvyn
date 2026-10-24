@@ -42,6 +42,9 @@ class AgentGateway:
     def deterministic(self, agent, report, goal):
         facts = report.get('facts',[])
         measured = '; '.join(f"{f['conversion']}% [{f['source']}]" for f in facts[:4]) or 'No measured funnel data supplied.'
+        if report.get('commerce'):
+            from backend.commerce import summary_lines
+            measured=' '.join(summary_lines(report)[:3])
         evidence = [e.get('citation',e.get('source','')) for e in report.get('evidence',[])[:3]]
         body = {
             'business_analyst': f'Measured observations: {measured} Validate definitions and baseline before changing the business plan. No cause is established.',

@@ -3329,3 +3329,222 @@ p {
 .studio-sidebar nav button {
   font-size: 15px;
 }
+/* Keep the existing workspace; make control labels legible without flex compression. */
+.control-nav > button {
+  flex-shrink: 0;
+  height: auto;
+  min-height: 82px;
+  align-items: center;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.control-nav > button > span {
+  display: block;
+  flex: 1;
+  min-width: 0;
+}
+.control-nav > button svg {
+  flex-shrink: 0;
+}
+.control-nav small {
+  display: block;
+  line-height: 1.5;
+  font-size: 14px;
+  color: #596d55;
+  margin-top: 5px;
+}
+.control-nav-note {
+  flex-shrink: 0;
+}
+.control-main p,
+.control-title p,
+.control-card p {
+  color: #53664b;
+  font-size: 16px;
+}
+.control-stats span,
+.control-form label {
+  color: #52644c;
+}
+.control-card-heading small {
+  color: #5e7057;
+}
+.commerce-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+.commerce-metric-grid > div {
+  border: 1px solid #dae4da;
+  border-radius: 10px;
+  padding: 15px;
+  background: #f5f8f2;
+  display: grid;
+  gap: 7px;
+}
+.commerce-metric-grid strong {
+  font-size: 21px;
+  color: #244f3c;
+}
+.commerce-metric-grid span {
+  font-size: 14px;
+}
+.commerce-metrics dt {
+  font-weight: 600;
+}
+.commerce-metrics dd {
+  margin: 5px 0 16px;
+}
+.execution-result {
+  padding: 16px;
+  border: 1px solid #c9ddcc;
+  background: #f1f8ef;
+  border-radius: 10px;
+  margin: 15px 0;
+}
+.tool-access {
+  position: relative;
+  color: #294a39;
+  font-size: 15px;
+}
+.tool-access > summary {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px;
+  border-radius: 8px;
+}
+.tool-access > summary:hover {
+  background: #edf3e9;
+}
+.tool-access-panel {
+  position: absolute;
+  bottom: calc(100% + 12px);
+  left: 0;
+  z-index: 30;
+  width: min(520px, calc(100vw - 48px));
+  max-height: 65vh;
+  overflow: auto;
+  background: white;
+  border: 1px solid #d3dfd2;
+  border-radius: 13px;
+  padding: 20px;
+  box-shadow: 0 12px 35px #1e38231a;
+  color: #2c3b2f;
+}
+.tool-access.inline {
+  margin: 0 0 22px;
+}
+.tool-access.inline .tool-access-panel {
+  position: static;
+  width: 100%;
+  max-height: 500px;
+  box-shadow: none;
+}
+.tool-access-panel p {
+  font-size: 15px;
+  line-height: 1.6;
+}
+.tool-access-actions {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+.tool-access-actions button {
+  border: 1px solid #cbd9c8;
+}
+.tool-access-item {
+  padding: 14px 0;
+  border-top: 1px solid #e0e8dd;
+}
+.tool-access-check {
+  display: flex !important;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+}
+.tool-access-check input {
+  width: auto !important;
+}
+.tool-access-panel textarea {
+  width: 100%;
+  min-height: 90px;
+  font: 14px monospace;
+  padding: 10px;
+}
+.tool-access-panel pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.chat-research {
+  padding: 8px 0;
+  font-size: 14px;
+}
+.chat-research label {
+  display: block;
+  margin: 12px 0;
+}
+.chat-research input:not([type="checkbox"]) {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cad8c7;
+  border-radius: 7px;
+}
+.chat-research summary {
+  cursor: pointer;
+  color: #456544;
+}
+.report p,
+.report td,
+.report th,
+.approval p {
+  font-size: 15px;
+}
+.report small {
+  color: #5d7058;
+}
+@media (max-width: 650px) {
+  .control-nav > button {
+    min-height: 44px;
+    font-size: 14px;
+    flex: 0 0 auto;
+  }
+  .control-nav small {
+    display: none;
+  }
+  .commerce-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .commerce-metric-grid strong {
+    font-size: 18px;
+  }
+  .tool-access-panel {
+    left: -38px;
+  }
+  .tool-access.inline .tool-access-panel {
+    left: auto;
+  }
+}
+.control-purpose {
+  font-size: 15px;
+  line-height: 1.65;
+  margin-bottom: 22px;
+  color: #405d3a;
+}
+.control-purpose summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.control-purpose p {
+  max-width: 850px;
+  margin: 12px 0;
+}
+.tool-access-panel .error {
+  font-size: 14px;
+}
+.tool-access-panel > div > button {
+  white-space: normal;
+}

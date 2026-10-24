@@ -5,7 +5,7 @@ from datetime import datetime,timezone
 from typing import Literal
 from uuid import uuid4,uuid5,NAMESPACE_URL
 from fastapi import Depends,HTTPException
-from jsonschema import Draft202012Validator
+from jsonschema import Draft202012Validator,ValidationError as SchemaValidationError
 from pydantic import BaseModel,ConfigDict,Field
 from backend.policy import RISK
 from backend.registry import ToolContext
@@ -77,7 +77,9 @@ class ToolPlugins:
                 for item in value:reject_credentials(item)
         reject_credentials(arguments)
         spec=self.spec(owner,name)
-        Draft202012Validator(spec['input_schema']).validate(arguments)
+        try:Draft202012Validator(spec['input_schema']).validate(arguments)
+        except SchemaValidationError:raise HTTPException(422,'Tool arguments do not match the registered input contract; inspect the tool schema and supply the required fields')
+        if spec.get('builtin')=='create_experiment_brief':self.get(owner,arguments['execution_id'],'execution')
         conversation=self.get(owner,arguments['conversation_id'],'conversation') if arguments.get('conversation_id') else None
         if spec['adapter']=='mcp' and self.mcp.server(owner,spec['server_id'])['transport']=='streamable_http':
             if not self.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'Organization policy forbids external processing')
@@ -100,7 +102,9 @@ class ToolPlugins:
         self.policy.require(owner,'write')
         # Check allowlists and risk ceilings without granting execution.
         self.policy.tool(owner,name,spec['risk'],spec['permission'],{'workspace.read','workspace.write'},True)
-        return self.save(owner,'tool_approval',{'tool':name,'arguments':arguments,'spec':spec,'binding':digest(name,arguments,fingerprint(spec)),'state':'WAITING_FOR_APPROVAL','requested_at':datetime.now(timezone.utc).isoformat(),'conversation':arguments.get('conversation_id')})
+        linked_conversation=arguments.get('conversation_id')
+        if spec.get('builtin')=='create_experiment_brief':linked_conversation=self.get(owner,arguments['execution_id'],'execution')['conversation']
+        return self.save(owner,'tool_approval',{'tool':name,'arguments':arguments,'spec':spec,'binding':digest(name,arguments,fingerprint(spec)),'state':'WAITING_FOR_APPROVAL','requested_at':datetime.now(timezone.utc).isoformat(),'conversation':linked_conversation})
     async def decide(self,owner,id,approve):
         self.policy.require(owner,'approve');self.get(owner,id,'tool_approval')
         with self.policy.conn() as c:

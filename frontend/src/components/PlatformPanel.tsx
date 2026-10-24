@@ -19,6 +19,8 @@ type Report = {
   outcome: string;
   conversation: string;
   baseline?: { conversion: number; period: string };
+  commerce_baseline?: any;
+  execution_result?: { tool: string; verified_task_count: number };
   tasks: string[];
 };
 type Schedule = {
@@ -31,6 +33,17 @@ type Schedule = {
   last_error?: string;
 };
 type Measurement = {
+  kind?: string;
+  changes?: Record<
+    string,
+    {
+      before: any;
+      after: any;
+      absolute_change: string | null;
+      percent_change: string | null;
+    }
+  >;
+  comparable_duration?: boolean;
   id: string;
   baseline: { conversion: number; period: string };
   followup: { conversion: number; period: string };
@@ -265,61 +278,116 @@ export function PlatformPanel({
                       Baseline: {r.baseline.conversion}% · {r.baseline.period}
                     </p>
                   )}
-                  {conversation && r.baseline && (
-                    <form
-                      onSubmit={async (e) => {
-                        e.preventDefault();
-                        setError("");
-                        try {
-                          await api.json("/artifacts/" + r.id + "/measure", {
-                            method: "POST",
-                            body: JSON.stringify(
-                              Object.fromEntries(new FormData(e.currentTarget)),
-                            ),
-                          });
-                          await load();
-                        } catch (e) {
-                          fail(e);
-                        }
-                      }}
-                    >
-                      <label>
-                        Follow-up CSV
-                        <select name="document_id" required defaultValue="">
-                          <option value="" disabled>
-                            Select uploaded measurement data
-                          </option>
-                          {conversation.files
-                            .filter((f) =>
-                              f.name.toLowerCase().endsWith(".csv"),
-                            )
-                            .map((f) => (
-                              <option key={f.id} value={f.id}>
-                                {f.name}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <label>
-                        Measurement notes
-                        <textarea
-                          name="notes"
-                          placeholder="Observation window, limitations and other changes"
-                          maxLength={2000}
-                        />
-                      </label>
-                      <button className="primary">Compare observations</button>
-                    </form>
+                  {r.commerce_baseline && (
+                    <p className="baseline">
+                      Saved sales baseline:{" "}
+                      {r.commerce_baseline.net_revenue ?? "Not available"}{" "}
+                      {r.commerce_baseline.currency || "currency unspecified"}{" "}
+                      net revenue · {r.commerce_baseline.orders ?? "Unknown"}{" "}
+                      orders · AOV{" "}
+                      {r.commerce_baseline.average_order_value ??
+                        "Not available"}
+                    </p>
                   )}
+                  {r.execution_result && (
+                    <p>
+                      Executed tool: {r.execution_result.tool} ·{" "}
+                      {r.execution_result.verified_task_count} saved tasks
+                      verified.
+                    </p>
+                  )}
+                  {conversation &&
+                    (r.baseline || r.commerce_baseline?.kind === "sales") && (
+                      <form
+                        onSubmit={async (e) => {
+                          e.preventDefault();
+                          setError("");
+                          try {
+                            await api.json("/artifacts/" + r.id + "/measure", {
+                              method: "POST",
+                              body: JSON.stringify(
+                                Object.fromEntries(
+                                  new FormData(e.currentTarget),
+                                ),
+                              ),
+                            });
+                            await load();
+                          } catch (e) {
+                            fail(e);
+                          }
+                        }}
+                      >
+                        {r.commerce_baseline && (
+                          <p>
+                            Choose a new sales export with dates strictly after
+                            the baseline, in the same currency. A pre/post
+                            change does not prove the task caused a sales
+                            effect.
+                          </p>
+                        )}
+                        <label>
+                          Follow-up CSV
+                          <select name="document_id" required defaultValue="">
+                            <option value="" disabled>
+                              Select uploaded measurement data
+                            </option>
+                            {conversation.files
+                              .filter((f) =>
+                                f.name.toLowerCase().endsWith(".csv"),
+                              )
+                              .map((f) => (
+                                <option key={f.id} value={f.id}>
+                                  {f.name}
+                                </option>
+                              ))}
+                          </select>
+                        </label>
+                        <label>
+                          Measurement notes
+                          <textarea
+                            name="notes"
+                            placeholder="Observation window, limitations and other changes"
+                            maxLength={2000}
+                          />
+                        </label>
+                        <button className="primary">
+                          Compare observations
+                        </button>
+                      </form>
+                    )}
                   {measures[r.id]?.map((m) => (
                     <div className="measurement" key={m.id}>
-                      <strong>
-                        {m.baseline.conversion}% → {m.followup.conversion}%
-                      </strong>
-                      <span>
-                        {m.change_percentage_points > 0 ? "+" : ""}
-                        {m.change_percentage_points} percentage points
-                      </span>
+                      {m.kind === "commerce" ? (
+                        <>
+                          <strong>Observed sales outcome</strong>
+                          {Object.entries(m.changes || {}).map(([key, v]) => (
+                            <p key={key}>
+                              {key.replaceAll("_", " ")}: {v.before} → {v.after}{" "}
+                              · change {v.absolute_change ?? "unavailable"} (
+                              {v.percent_change === null
+                                ? "no nonzero baseline"
+                                : v.percent_change + "%"}
+                              )
+                            </p>
+                          ))}
+                          {!m.comparable_duration && (
+                            <p>
+                              Observed date spans differ; raw totals are not
+                              directly comparable as growth rates.
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <strong>
+                            {m.baseline.conversion}% → {m.followup.conversion}%
+                          </strong>
+                          <span>
+                            {m.change_percentage_points > 0 ? "+" : ""}
+                            {m.change_percentage_points} percentage points
+                          </span>
+                        </>
+                      )}
                       <p>{m.classification}</p>
                       {m.notes && <p>{m.notes}</p>}
                     </div>

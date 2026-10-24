@@ -81,4 +81,19 @@ Previous studio milestone: **86 tests passed**. Generated React compilation, gen
 - [x] Larger readable typography, responsive canvas and corrected nested-aside/composer overflow on mobile.
 - [ ] Live OAuth credential acceptance, native CRM/social OAuth, arbitrary-code sandbox, more source adapters, semantic memory, MFA/recovery and production deployment/security review.
 
-Current validation: **103 unit/API/integration tests passed**. The connected browser flow passes including a visual three-node graph and approval/resume. Existing account, product studio and control-center browser regressions pass. Exported product and runtime console compile; the exported API starts independently against an isolated real PostgreSQL schema, invokes a real bundled MCP server, enforces governance, and produces another complete export. Live public research returned real indexed counts. OAuth endpoints use mocked external responses in tests; no real OAuth credentials or third-party CRM credentials were available. No public hosting, arbitrary-code execution or production certification is claimed.
+Previous connected-runtime validation: **103 unit/API/integration tests passed**. The connected browser flow passes including a visual three-node graph and approval/resume. Existing account, product studio and control-center browser regressions pass. Exported product and runtime console compile; the exported API starts independently against an isolated real PostgreSQL schema, invokes a real bundled MCP server, enforces governance, and produces another complete export. Live public research returned real indexed counts. OAuth endpoints use mocked external responses in tests; no real OAuth credentials or third-party CRM credentials were available. No public hosting, arbitrary-code execution or production certification is claimed.
+
+## E-commerce intelligence and execution slice
+
+- [x] Existing business/chat UI retained; explicit e-commerce workspace type.
+- [x] Atomic validated catalog/sales ingestion into structured PostgreSQL datasets; exact numeric aggregation, distinct orders, gross/net/AOV definitions, refunds/discounts/status handling and product contributions.
+- [x] Unknown adjustments/currencies/costs are not invented; catalogs do not imply revenue; snapshots are not summed blindly; bounded imports do not silently truncate sales rows.
+- [x] Shared MCP/tool access in development, chat, discussion and growth; selected read-only tool calls are actually invoked and their results/time/trace saved.
+- [x] Optional actual public discussion research in the chat run, dated citations and explicit outage continuation with local evidence.
+- [x] Existing approval action uses the registered, policy-checked tool; real internal task/brief writes, replay protection, persisted verified receipt and private-project approval scope.
+- [x] Same-conversation follow-up sales comparison, immutable baseline, currency/date/duplicate-source checks and explicit causal/coverage limits.
+- [x] Control-center purpose explained in-product; readable nonoverlapping captions and contextual connection access.
+- [x] Per-test database isolation prevents old test schedules from running inside unrelated mock-provider fixtures.
+- [ ] Native merchant/social/ad credentials and live external publication; arbitrary CSV mappings; quantitative competitor/market-share conclusions without an authorized source.
+
+Validation: **130 tests passed**. The live e-commerce browser journey and existing account, registry/governance and studio browser regressions pass. Actual public research succeeded during acceptance, but it remains limited discussion evidence. No live external store/ad action or causal revenue improvement is claimed. See ECOMMERCE_AUDIT.md for the actual execution path and import/action boundaries.

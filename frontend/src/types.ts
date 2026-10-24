@@ -11,6 +11,14 @@ export type Source = {
   retrieved_at: string;
 };
 export type Report = {
+  commerce?: { primary: any; selection: string; datasets: any[] };
+  research_status?: { status: string; detail?: string };
+  connector_status?: {
+    tool: string;
+    status: string;
+    retrieved_at?: string;
+    detail?: string;
+  }[];
   operations?: any;
   knowledge_scope?: string;
   provider_status?: string;
@@ -34,6 +42,13 @@ export type Report = {
 };
 export type Run = {
   engine?: string;
+  execution_result?: {
+    tool: string;
+    status: string;
+    verified_task_count: number;
+    executed_at: string;
+    external_effect: string;
+  };
   id: string;
   state: string;
   events: { stage: string; detail: string }[];
@@ -56,7 +71,11 @@ export type Convo = {
   business_id?: string;
   project_id?: string;
   created_at?: string;
-  files: { id: string; name: string }[];
+  files: {
+    id: string;
+    name: string;
+    import?: { kind: string; dataset_id: string };
+  }[];
   messages: Message[];
 };
 export type Business = {

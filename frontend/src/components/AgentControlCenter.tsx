@@ -19,13 +19,15 @@ export function AgentControlCenter({
   conversation,
   onClose,
   onRefresh,
+  initialTab = "servers",
 }: {
   api: ReturnType<typeof client>;
   conversation: Convo | null;
   onClose: () => void;
   onRefresh: () => void;
+  initialTab?: Tab;
 }) {
-  const [tab, setTab] = useState<Tab>("servers");
+  const [tab, setTab] = useState<Tab>(initialTab);
   const [servers, setServers] = useState<any[]>([]);
   const [tools, setTools] = useState<any[]>([]);
   const [graphs, setGraphs] = useState<any[]>([]);
@@ -231,6 +233,18 @@ export function AgentControlCenter({
             </div>
           </nav>
           <main className="control-main">
+            <details className="control-purpose">
+              <summary>What does the Agent control center do?</summary>
+              <p>
+                This is Evolvyn’s shared configuration and operations area.
+                Connect MCP servers and verify health, register their tools,
+                inspect workflow executions and approval requests, and set
+                organization/project permissions. The development and business
+                screens use these same connections through Connections & tools.
+                Reading evidence and approving a write are separate permissions;
+                a connected tool cannot approve its own actions.
+              </p>
+            </details>
             {error && (
               <div role="alert" className="error">
                 {error}
