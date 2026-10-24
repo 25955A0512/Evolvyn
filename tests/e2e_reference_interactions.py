@@ -110,6 +110,7 @@ with sync_playwright() as p:
     page.reload();page.locator('.workspace-links').get_by_role('button',name='Agents',exact=True).click()
     studio.get_by_role('button',name='Custom',exact=True).click()
     expect(studio.locator('.agent-catalog')).to_contain_text('Customer success reviewer')
+    if not studio.get_by_role('button',name='Integrations',exact=True).is_visible():studio.locator('.studio-advanced-nav>summary').click()
     studio.get_by_role('button',name='Integrations',exact=True).click()
     studio.get_by_label('Search connector catalog',exact=True).fill('Evidence utilities')
     studio.get_by_role('button',name='Configure Evidence utilities',exact=True).click()

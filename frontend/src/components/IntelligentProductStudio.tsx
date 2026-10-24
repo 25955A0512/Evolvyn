@@ -1,3 +1,5 @@
+import { TrashDialog } from "./TrashDialog";
+import { Trash2 } from "lucide-react";
 import { ProductDocument } from "./ProductDocument";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -38,6 +40,14 @@ const phases = [
 function output(run: any, id: string) {
   return run?.graph_checkpoint?.nodes?.[id]?.output;
 }
+function belongsToRun(build: any, run: any) {
+  return (
+    !run ||
+    build.execution_id === run.id ||
+    build.blueprint?.execution_id === run.id ||
+    output(run, "implementation")?.id === build.id
+  );
+}
 function interviewReply(run: any): string | undefined {
   if (output(run, "proposal")?.reply) return output(run, "proposal").reply;
   // Preserve a model's valid conversational reply even when its proposed
@@ -58,6 +68,7 @@ export function IntelligentProductStudio({
   onManage: ManageConnections;
   onGuided: () => void;
 }) {
+  const [trashOpen, setTrashOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const storageKey =
@@ -149,11 +160,16 @@ export function IntelligentProductStudio({
     remember(id);
     setProduct(p);
     setHistory(h);
-    setBuild(b.builds.find((b: any) => b.spec_id === id) || null);
+
     const latest = h.find((r: any) =>
       r.definition?.nodes.some((n: any) => n.id === "contracts"),
     );
     setRun(latest || null);
+    setBuild(
+      b.builds.find(
+        (row: any) => row.spec_id === id && belongsToRun(row, latest),
+      ) || null,
+    );
     if (latest) {
       setAgents(
         phases
@@ -237,8 +253,10 @@ export function IntelligentProductStudio({
           .then((rows) => {
             if (active)
               setBuild(
-                rows.find((row: any) => row.spec_id === selected.current) ||
-                  null,
+                rows.find(
+                  (row: any) =>
+                    row.spec_id === selected.current && belongsToRun(row, run),
+                ) || null,
               );
           })
           .catch(() => {}),
@@ -248,7 +266,7 @@ export function IntelligentProductStudio({
       active = false;
       clearInterval(timer);
     };
-  }, [run?.state, run?.graph_checkpoint?.current?.id]);
+  }, [run?.id, run?.state, run?.graph_checkpoint?.current?.id]);
   useEffect(() => {
     if (stickToBottom.current)
       bottom.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -282,7 +300,10 @@ export function IntelligentProductStudio({
                 if (id) setBuild(b.find((v: any) => v.id === id) || null);
                 else if (!chat)
                   setBuild(
-                    b.find((v: any) => v.spec_id === selected.current) || null,
+                    b.find(
+                      (v: any) =>
+                        v.spec_id === selected.current && belongsToRun(v, r),
+                    ) || null,
                   );
               })
               .catch((e) => setError(e.message));
@@ -297,14 +318,15 @@ export function IntelligentProductStudio({
   useEffect(() => {
     if (
       run?.id &&
-      output(run, "file_plan")?.files?.length &&
+      build?.files &&
+      Object.keys(build.files).length &&
       revealedRun.current !== run.id
     ) {
       revealedRun.current = run.id;
       setArtifactsOpen(true);
       setTab("source");
     }
-  }, [run?.id, output(run, "file_plan")?.files]);
+  }, [run?.id, build?.files]);
   async function act(fn: () => Promise<void>) {
     setBusy(true);
     setError("");
@@ -401,13 +423,7 @@ export function IntelligentProductStudio({
   const contracts = output(run, "contracts");
   const pending = run?.graph_checkpoint?.pending;
   const blueprint = contracts || build?.blueprint;
-  const plannedFiles: Record<string, string> = Object.fromEntries(
-    (output(run, "file_plan")?.files || []).map((path: string) => [path, ""]),
-  );
-  const sourceFiles =
-    build?.files && Object.keys(build.files).length
-      ? build.files
-      : plannedFiles;
+  const sourceFiles: Record<string, string> = build?.files || {};
   const completeProposal =
     product &&
     proposal &&
@@ -431,23 +447,34 @@ export function IntelligentProductStudio({
   const status =
     build?.state === "FAILED"
       ? "Build failed"
-      : run?.state === "FAILED"
-        ? "Workflow stopped"
-        : contracts?.can_build === false
-          ? "Review requested changes"
-          : pending
-            ? "Approval needed"
-            : running
-              ? "Agents working"
-              : build?.state === "READY"
-                ? "Source ready · runtime not started"
-                : run?.state === "COMPLETED"
-                  ? "Blueprint ready"
-                  : product
-                    ? "Requirements discussion"
-                    : "Start a product";
+      : run?.state === "CANCELLED"
+        ? "Workflow cancelled"
+        : run?.state === "FAILED"
+          ? "Workflow stopped"
+          : contracts?.can_build === false
+            ? "Review requested changes"
+            : pending
+              ? "Approval needed"
+              : running
+                ? "Agents working"
+                : build?.state === "READY"
+                  ? "Source ready · runtime not started"
+                  : run?.state === "COMPLETED"
+                    ? "Blueprint ready"
+                    : product
+                      ? "Requirements discussion"
+                      : "Start a product";
   return (
     <div className="intelligent-product-studio">
+      {trashOpen && (
+        <TrashDialog
+          api={api}
+          onClose={() => setTrashOpen(false)}
+          onRestore={() => {
+            catalog().catch((e) => setError(e.message));
+          }}
+        />
+      )}
       <header className="product-workbench-header">
         <div>
           <span className="eyebrow">PRODUCT DEVELOPMENT WORKSPACE</span>
@@ -466,7 +493,42 @@ export function IntelligentProductStudio({
           </button>
           <details>
             <summary>Options</summary>
-            <button onClick={onGuided}>Guided form · no model</button>
+            <div
+              className="product-options-menu"
+              onClick={(e) => {
+                if ((e.target as HTMLElement).closest("button")) {
+                  const details = e.currentTarget.closest("details");
+                  if (details) details.open = false;
+                }
+              }}
+            >
+              {" "}
+              {product && (
+                <button
+                  aria-label="Move product conversation to trash"
+                  disabled={busy}
+                  onClick={() =>
+                    act(async () => {
+                      await api.json("/studio/products/" + product.id, {
+                        method: "DELETE",
+                      });
+                      newProduct();
+                      await catalog();
+                      setNotice("Moved to trash. Restore it within 15 days.");
+                    })
+                  }
+                >
+                  <Trash2 size={16} /> Move conversation to trash
+                </button>
+              )}
+              <button
+                aria-label="Open product trash"
+                onClick={() => setTrashOpen(true)}
+              >
+                <Trash2 size={16} /> Trash
+              </button>
+              <button onClick={onGuided}>Guided form · no model</button>
+            </div>
           </details>
         </div>
       </header>
@@ -507,7 +569,6 @@ export function IntelligentProductStudio({
         >
           {status}
         </span>
-        <ToolAccess api={api} onManage={onManage} />
         {[interview, run]
           .filter((r) => r && ["CREATED", "RUNNING"].includes(r.state))
           .map((active) => (
@@ -707,6 +768,20 @@ export function IntelligentProductStudio({
                           <small>{event.stage}</small> {event.detail}
                         </p>
                       ))}
+                    {build?.generation === "model" && (
+                      <div className="source-creation-progress" role="status">
+                        <strong>
+                          {Object.keys(build.files || {}).length} files saved
+                          {build.manifest ? " of " + build.manifest.length : ""}
+                        </strong>
+                        {build.events
+                          ?.slice(-3)
+                          .map((event: any, i: number) => (
+                            <p key={i}>{event.detail}</p>
+                          ))}
+                        {build.error && <p className="error">{build.error}</p>}
+                      </div>
+                    )}
                     {run.state === "RUNNING" && run.output && (
                       <details>
                         <summary>Current agent output</summary>
@@ -755,7 +830,9 @@ export function IntelligentProductStudio({
                           setTab("preview");
                         }}
                       >
-                        Open working data prototype
+                        {build.generation === "model"
+                          ? "Open data sandbox"
+                          : "Open working data prototype"}
                       </button>
                     )}
                     {["FAILED", "CANCELLED", "COMPLETED"].includes(run.state) &&
@@ -771,9 +848,9 @@ export function IntelligentProductStudio({
                   <div className="product-implementation-approval">
                     <h3>Approve this source implementation?</h3>
                     <p>
-                      These exact product requirements and blueprint will
-                      generate a versioned source artifact. This does not
-                      deploy, publish or spend.
+                      This creates source files using your selected model and
+                      the output limits below. Provider usage may incur charges.
+                      It does not deploy or publish the application.
                     </p>
                     <details>
                       <summary>Exact approved arguments</summary>
@@ -902,7 +979,10 @@ export function IntelligentProductStudio({
                       prd: "PRD",
                       architecture: "Architecture",
                       source: "Source tree",
-                      preview: "Prototype",
+                      preview:
+                        build?.generation === "model"
+                          ? "Data sandbox"
+                          : "Prototype",
                       validation: "Build results",
                     } as Record<string, string>
                   )[t]
@@ -1001,8 +1081,11 @@ export function IntelligentProductStudio({
                         setRun(r);
                         const { builds: b } = await catalog();
                         setBuild(
-                          b.find((v: any) => v.spec_id === selected.current) ||
-                            null,
+                          b.find(
+                            (v: any) =>
+                              v.spec_id === selected.current &&
+                              belongsToRun(v, r),
+                          ) || null,
                         );
                       })
                     }
@@ -1062,7 +1145,8 @@ export function IntelligentProductStudio({
                     {build?.files
                       ? "Source snapshot"
                       : "Planned paths · contents pending approval"}{" "}
-                    · {Object.keys(sourceFiles).length} files
+                    · revision {build?.revision} ·{" "}
+                    {Object.keys(sourceFiles).length} files
                   </small>
                   <pre tabIndex={0}>
                     {sourceFiles[file] ||
@@ -1076,15 +1160,24 @@ export function IntelligentProductStudio({
               <div className="product-workbench-pane">
                 <h2>Your project files will appear here.</h2>
                 <p>
-                  Source is generated only after approved requirements,
-                  successful agent contracts, and your implementation approval.
+                  No files have been created yet. After your source approval,
+                  the model creates and saves each file individually. The tree
+                  shows saved files only.
                 </p>
               </div>
             ))}
           {tab === "preview" && (
             <div className="product-workbench-pane">
               {build?.state === "READY" ? (
-                <ProductPreview api={api} build={build} />
+                <>
+                  {build.generation === "model" && (
+                    <p>
+                      This is a data sandbox using the confirmed entities. The
+                      generated application has not been executed.
+                    </p>
+                  )}
+                  <ProductPreview api={api} build={build} />
+                </>
               ) : (
                 <>
                   <h2>No ready prototype</h2>
@@ -1100,6 +1193,13 @@ export function IntelligentProductStudio({
           {tab === "validation" && (
             <div className="product-workbench-pane">
               <h2>Actual build & validation results</h2>
+              {build?.generation === "model" && (
+                <p>
+                  Model-authored source; saved file by file. Backend runtime and
+                  security acceptance are not inferred from frontend
+                  compilation.
+                </p>
+              )}
               {build ? (
                 <>
                   <strong className={build.state === "FAILED" ? "error" : ""}>
@@ -1119,7 +1219,11 @@ export function IntelligentProductStudio({
                       {c}
                     </p>
                   ))}
-                  <h3>Domain requirements still needing implementation</h3>
+                  <h3>
+                    {build.generation === "model"
+                      ? "Domain requirements awaiting runtime verification"
+                      : "Domain requirements still needing implementation"}
+                  </h3>
                   {build.pending_requirements?.map((c: string) => (
                     <p key={c}>{c}</p>
                   ))}

@@ -54,14 +54,15 @@ def test_graph_provider_selection_never_silently_substitutes_evidence(clients,mo
     assert execution['state']=='FAILED' and not execution['output']
     assert 'Deterministic evidence mode' not in str(execution)
 
-def test_capability_graph_honors_the_registered_role_token_limit(clients,monkeypatch):
+@pytest.mark.parametrize("requested",[None,8192])
+def test_capability_graph_honors_the_registered_role_token_limit(clients,monkeypatch,requested):
     a,_=clients;calls=[]
     async def renderer(report,question,history,mode):
         calls.append(report['_output_limit']);yield 'A bounded model finding'
     monkeypatch.setitem(module.GRAPH_HARNESS.s,'response_chunks',renderer)
     a.post('/api/agents',json={'agent':'limited_role','name':'Limited role','goal':'Review authorized evidence only','output_tokens':64}).raise_for_status()
     conv=a.post('/api/conversations',json={'title':'Role budget'}).json()
-    graph=a.post('/api/harness/graphs',json={'name':'Role budget','goal':'Honor the registered budget','entry':'agent','nodes':[{'id':'agent','type':'agent','agent_id':'limited_role','mode':'local'}]}).json()
+    graph=a.post('/api/harness/graphs',json={'name':'Role budget','goal':'Honor the registered budget','entry':'agent','nodes':[{'id':'agent','type':'agent','agent_id':'limited_role','mode':'local','output_tokens':requested}]}).json()
     run=a.post('/api/harness/graphs/'+graph['id']+'/run',json={'conversation_id':conv['id']}).json()
     a.get('/api/executions/'+run['id']+'/live')
     result=a.get('/api/executions/'+run['id']).json()

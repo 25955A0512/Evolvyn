@@ -13,6 +13,8 @@ import {
   Plus,
   ArrowRight,
   Shield,
+  PanelLeftClose,
+  PanelLeftOpen,
   Check,
   Search,
 } from "lucide-react";
@@ -86,9 +88,53 @@ function VaultPanel({ api }: { api: API }) {
       )}
       {data && (
         <>
-          <section className="workspace-model-default"><h3>Use one saved key across all agents</h3><p>A single unassigned Gemini key becomes the workspace default automatically. Explicit per-agent routes remain in force until you choose “Use for all agents”.</p>
-          {data.credentials.filter((c:any)=>c.enabled&&c.provider!=="mcp").map((c:any)=><div className="default-key-choice" key={c.id}><strong>{c.name} · {c.provider}</strong><button disabled={busy} onClick={()=>action(async()=>{await api.json('/vault/workspace-default',{method:'PUT',body:JSON.stringify({provider:c.provider,credential_id:c.id,reset_agent_overrides:true})});},'Workspace default saved. All agents now inherit this key.')}>Use for all agents</button></div>)}
-          <details><summary>Effective route for every agent</summary>{Object.entries(data.effective_routes||{}).map(([agent,route]:[string,any])=><p key={agent}>{data.agents[agent]}: {route.provider}{route.inferred?' · saved key selected automatically':''}</p>)}</details></section>
+          <section className="workspace-model-default">
+            <h3>Use one saved key across all agents</h3>
+            <p>
+              A single unassigned Gemini key becomes the workspace default
+              automatically. Explicit per-agent routes remain in force until you
+              choose “Use for all agents”.
+            </p>
+            {data.credentials
+              .filter((c: any) => c.enabled && c.provider !== "mcp")
+              .map((c: any) => (
+                <div className="default-key-choice" key={c.id}>
+                  <strong>
+                    {c.name} · {c.provider}
+                  </strong>
+                  <button
+                    disabled={busy}
+                    onClick={() =>
+                      action(async () => {
+                        await api.json("/vault/workspace-default", {
+                          method: "PUT",
+                          body: JSON.stringify({
+                            provider: c.provider,
+                            credential_id: c.id,
+                            reset_agent_overrides: true,
+                          }),
+                        });
+                      }, "Workspace default saved. All agents now inherit this key.")
+                    }
+                  >
+                    Use for all agents
+                  </button>
+                </div>
+              ))}
+            <details>
+              <summary>Effective route for every agent</summary>
+              {Object.entries(data.effective_routes || {}).map(
+                ([agent, route]: [string, any]) => (
+                  <p key={agent}>
+                    {data.agents[agent]}: {route.provider}
+                    {route.inferred
+                      ? " · saved key selected automatically"
+                      : ""}
+                  </p>
+                ),
+              )}
+            </details>
+          </section>
           <div className="vault-security">
             <Shield size={20} />
             <div>
@@ -1148,7 +1194,7 @@ export function AgentWorkspace({
 }: {
   api: API;
   initialTab: StudioTab;
-  onTabChange?: (tab:StudioTab)=>void;
+  onTabChange?: (tab: StudioTab) => void;
   initialAgent?: string;
   onSettings?: () => void;
   onNavigate?: (id: string) => void;
@@ -1159,9 +1205,27 @@ export function AgentWorkspace({
   onRefresh: () => void;
   onManage: ManageConnections;
 }) {
+  const [navHidden, setNavHidden] = useState(
+    () =>
+      sessionStorage.getItem("evolvyn-studio-nav") === "hidden" ||
+      (innerWidth < 650 &&
+        sessionStorage.getItem("evolvyn-studio-nav") !== "shown"),
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(
+    () =>
+      sessionStorage.getItem("evolvyn-studio-tools") === "open" ||
+      !["build", "growth", "discuss", "canvas"].includes(initialTab),
+  );
   const [tab, setTabState] = useState<StudioTab>(initialTab);
-  function setTab(value:StudioTab){setTabState(value);onTabChange?.(value);}
-  useEffect(() => setTabState(initialTab), [initialTab]);
+  function setTab(value: StudioTab) {
+    setTabState(value);
+    onTabChange?.(value);
+  }
+  useEffect(() => {
+    setTabState(initialTab);
+    if (!["build", "growth", "discuss", "canvas"].includes(initialTab))
+      setAdvancedOpen(true);
+  }, [initialTab]);
   const tabs = [
     { id: "build", name: "Build a product", icon: Code2 },
     { id: "growth", name: "Growth insights", icon: Brain },
@@ -1175,7 +1239,7 @@ export function AgentWorkspace({
   ] as const;
   return (
     <div
-      className="agent-workspace"
+      className={"agent-workspace" + (navHidden ? " studio-nav-hidden" : "")}
       role="dialog"
       aria-modal="true"
       aria-labelledby="agent-workspace-heading"
@@ -1187,33 +1251,73 @@ export function AgentWorkspace({
             evolvyn<span>Business & product studio</span>
           </strong>
         </div>
-        <nav>
-          {tabs.map((t) => (
-            <button
-              className={tab === t.id ? "selected" : ""}
-              key={t.id}
-              onClick={() => setTab(t.id)}
-            >
-              <UiIcon
-                name={
-                  (
-                    {
-                      build: "code",
-                      growth: "chart-line",
-                      canvas: "automation",
-                      runtime: "shield-check",
-                      discuss: "users",
-                      agents: "git-branch",
-                      memory: "brain",
-                      vault: "key",
-                      integrations: "plug-connected",
-                    } as const
-                  )[t.id]
-                }
-              />
-              {t.name}
-            </button>
-          ))}
+        <nav aria-label="Studio modules">
+          {tabs
+            .filter((t) =>
+              ["build", "growth", "discuss", "canvas"].includes(t.id),
+            )
+            .map((t) => (
+              <button
+                className={tab === t.id ? "selected" : ""}
+                key={t.id}
+                onClick={() => setTab(t.id)}
+              >
+                <UiIcon
+                  name={
+                    t.id === "build"
+                      ? "code"
+                      : t.id === "growth"
+                        ? "chart-line"
+                        : t.id === "discuss"
+                          ? "users"
+                          : "automation"
+                  }
+                />
+                {t.name}
+              </button>
+            ))}
+          <details
+            className="studio-advanced-nav"
+            open={advancedOpen}
+            onToggle={(e) => {
+              setAdvancedOpen(e.currentTarget.open);
+              sessionStorage.setItem(
+                "evolvyn-studio-tools",
+                e.currentTarget.open ? "open" : "closed",
+              );
+            }}
+          >
+            <summary>Workspace tools</summary>
+            <div className="studio-advanced-links">
+              {tabs
+                .filter(
+                  (t) =>
+                    !["build", "growth", "discuss", "canvas"].includes(t.id),
+                )
+                .map((t) => (
+                  <button
+                    className={tab === t.id ? "selected" : ""}
+                    key={t.id}
+                    onClick={() => setTab(t.id)}
+                  >
+                    <UiIcon
+                      name={
+                        t.id === "vault"
+                          ? "key"
+                          : t.id === "memory"
+                            ? "brain"
+                            : t.id === "integrations"
+                              ? "plug-connected"
+                              : t.id === "runtime"
+                                ? "shield-check"
+                                : "git-branch"
+                      }
+                    />
+                    {t.name}
+                  </button>
+                ))}
+            </div>
+          </details>
         </nav>
         <div className="studio-sidebar-bottom">
           <Shield size={18} />
@@ -1235,7 +1339,27 @@ export function AgentWorkspace({
       </aside>
       <main className="studio-content">
         <header className="studio-topbar">
-          <span>{tabs.find((t) => t.id === tab)?.name}</span>
+          <div>
+            <button
+              aria-label={
+                navHidden ? "Show studio navigation" : "Hide studio navigation"
+              }
+              onClick={() => {
+                sessionStorage.setItem(
+                  "evolvyn-studio-nav",
+                  navHidden ? "shown" : "hidden",
+                );
+                setNavHidden(!navHidden);
+              }}
+            >
+              {navHidden ? (
+                <PanelLeftOpen size={20} />
+              ) : (
+                <PanelLeftClose size={20} />
+              )}
+            </button>
+            <span>{tabs.find((t) => t.id === tab)?.name}</span>
+          </div>
           <div>
             <span className="studio-private">
               <span className="live-dot" />
@@ -1303,7 +1427,10 @@ export function AgentWorkspace({
           )}{" "}
           {tab === "vault" && <VaultPanel api={api} />}{" "}
           {tab === "integrations" && (
-            <><AuthorizedConnections api={api} /><Integrations api={api} onManage={onManage} /></>
+            <>
+              <AuthorizedConnections api={api} />
+              <Integrations api={api} onManage={onManage} />
+            </>
           )}
         </div>
       </main>

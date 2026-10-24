@@ -27,6 +27,7 @@ class Node(BaseModel):
     id:str=Field(pattern=r'^[A-Za-z][A-Za-z0-9_]{0,39}$')
     type:Literal['tool','agent','condition','approval','result']
     agent_id:str=Field(default='supervisor',pattern=r'^[a-z][a-z0-9_]{2,59}$')
+    output_tokens:int|None=Field(default=None,ge=64,le=8192)
     max_visits:int=Field(default=10,ge=1,le=100)
     tool:str|None=None
     arguments:dict=Field(default_factory=dict)
@@ -154,6 +155,7 @@ class GraphHarness:
         record={'engine':'graph','conversation':conversation_id,'definition':definition.model_dump(),'graph_id':id,'question':definition.goal,'state':'CREATED','events':[],'output':'','report':None,'actor':principal.account}
         with s['conn']() as c:
             row=c.execute("SELECT body FROM records WHERE id=%s AND owner=%s FOR UPDATE",(conversation_id,owner)).fetchone()
+            if row['body'].get('trashed_at'):raise HTTPException(410,'Conversation is in trash')
             if c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('CREATED','RUNNING')",(owner,conversation_id)).fetchone():raise HTTPException(409,'Conversation already has an active execution')
             c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(execution_id,owner,'execution',json.dumps(record)))
             conv=row['body'];conv['messages'] += [{'role':'user','text':definition.goal},{'role':'assistant','text':'Agent graph is running…','execution':execution_id}]
@@ -235,8 +237,11 @@ class GraphHarness:
                             if selected_mode!='evidence':
                                 from backend.providers import provider_config
                                 provider_config(selected_mode)
-                            role_limit=s['AGENTS'].definition(owner,node.agent_id)['output_tokens'] if s.get('AGENTS') else 700
-                            reserve=0 if selected_mode=='evidence' else min(role_limit,512 if selected_mode=='local' else 1024,definition.max_output_tokens-cp['tokens_reserved'])
+                            role=s['AGENTS'].definition(owner,node.agent_id) if s.get('AGENTS') else {'output_tokens':700,'builtin':True}
+                            role_limit=role['output_tokens']
+                            requested=node.output_tokens or role_limit
+                            if not role.get('builtin'):requested=min(requested,role_limit)
+                            reserve=0 if selected_mode=='evidence' else min(requested,512 if selected_mode=='local' else 8192,definition.max_output_tokens-cp['tokens_reserved'])
                             if selected_mode!='evidence' and reserve<1:raise ValueError('Model output-token budget exhausted')
                             report=arguments.get('report')
                             if not isinstance(report,dict) or 'facts' not in report or 'evidence' not in report:

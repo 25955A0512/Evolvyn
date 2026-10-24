@@ -1,4 +1,6 @@
-"""Live local-model + browser acceptance. Requires running app and local Qwen."""
+"""Legacy trusted starter adapter + actual local role calls and browser acceptance.
+AI-authored files are covered by the controlled source-generation acceptance.
+"""
 import ast,json,os,re,time,sys
 from pathlib import Path
 from uuid import uuid4
@@ -51,7 +53,8 @@ with sync_playwright() as pw:
     # Reviewer rejection is covered separately and must never be overridden automatically.
     if studio.get_by_role('button',name='Open workspace',exact=True).is_visible():studio.get_by_role('button',name='Open workspace',exact=True).click()
     studio.get_by_label('Enable Quality reviewer',exact=True).uncheck()
-    studio.get_by_role('button',name='Run product agents',exact=False).click()
+    call('/studio/products/'+product['id']+'/agent-build',{'spec_id':product['id'],'revision':product['revision'],'mode':'local','agents':['prd','architecture','developer'],'generation':'template'})
+    page.reload();page.locator('.agent-workspace').wait_for()
     studio.get_by_role('button',name='Approve source implementation',exact=True).wait_for(timeout=330000)
     page.screenshot(path=str(out/'product-agents-approval.png'))
     expect(studio.locator('.product-implementation-approval')).to_contain_text('exact')

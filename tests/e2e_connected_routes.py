@@ -30,6 +30,7 @@ with sync_playwright() as pw:
   page.reload();page.get_by_role('heading',name=text,exact=True).wait_for(timeout=20000)
   assert page.url==base+route
  page.goto(base+'/product-studio')
+ if not page.locator('.agent-workspace').get_by_role('button',name='Key vault',exact=True).is_visible():page.locator('.studio-advanced-nav>summary').click()
  page.locator('.agent-workspace').get_by_role('button',name='Key vault',exact=True).click();page.wait_for_url(base+'/keyvault')
  page.go_back();page.get_by_role('heading',name='New product conversation',exact=True).wait_for()
  page.goto(base+'/integrations');page.get_by_role('button',name='Connect GitHub',exact=True).click()

@@ -6,8 +6,11 @@ async def compile_frontend(files):
     url=os.getenv('EVOLVYN_COMPILER_URL','')
     if not url:return {'status':'unavailable','detail':'No isolated compiler configured; source/contract validation only'}
     # Operator configuration only; neither a model nor a product supplies destinations.
-    allowed={'frontend/src/main.jsx','frontend/src/style.css','frontend/src/spec.json','frontend/src/product-experience.json'}
-    inputs={k.removeprefix('frontend/src/'):v for k,v in files.items() if k in allowed}
+    # Source-only files under src; dependency scripts and arbitrary paths never run.
+    def allowed(path):
+        value=path.removeprefix('frontend/src/')
+        return path.startswith('frontend/src/') and re.fullmatch(r'[A-Za-z0-9_./-]+',value) and all(part not in ('.','..','') for part in value.split('/')) and value.endswith(('.js','.jsx','.ts','.tsx','.css','.json'))
+    inputs={k.removeprefix('frontend/src/'):v for k,v in files.items() if allowed(k)}
     try:
         async with httpx.AsyncClient(timeout=30,trust_env=False,follow_redirects=False) as client:
             response=await client.post(url.rstrip('/')+'/compile',json={'files':inputs},headers={'X-Compiler-Token':os.getenv('EVOLVYN_COMPILER_TOKEN','')})

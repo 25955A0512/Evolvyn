@@ -59,6 +59,32 @@ class PolicyEngine:
         return None
     def resource(self,owner,action,kind,body,id=None):
         p=self.require(owner,action)
+        from backend.trash import ACCESS
+        if not ACCESS.get() and kind!='trash_entry':
+            if body.get('trashed_at'):raise HTTPException(404,'Conversation is in trash')
+            if kind=='document' and id:
+                with self.conn() as c:references=c.execute("SELECT id,body FROM records WHERE owner=%s AND kind='conversation' AND body->'files' @> %s::jsonb",(owner,__import__('json').dumps([{'id':id}]))).fetchall()
+                if references:
+                    accessible=None
+                    for reference in references:
+                        try:self.resource(owner,action,'conversation',reference['body'],reference['id']);accessible=reference;break
+                        except HTTPException:continue
+                    if not accessible:raise HTTPException(404,'Document belongs to inaccessible conversations')
+                    body={**body,'conversation':accessible['id']}
+            fields=('conversation','conversation_id','spec_id','build_id','execution','artifact')
+            pending={body[f] for f in fields if isinstance(body.get(f),str)}
+            if kind=='agent_memory':pending.update(v for v in body.get('source_ids',[]) if isinstance(v,str))
+            seen=set()
+            for _ in range(6):
+                pending-=seen
+                if not pending:break
+                seen.update(pending)
+                with self.conn() as c:parents=c.execute('SELECT id,body FROM records WHERE owner=%s AND id=ANY(%s)',(owner,list(pending))).fetchall()
+                if any(r['body'].get('trashed_at') for r in parents):raise HTTPException(404,'Conversation is in trash')
+                pending={r['body'][f] for r in parents for f in fields if isinstance(r['body'].get(f),str)}
+            if kind=='document' and id:
+                with self.conn() as c:parents=c.execute("SELECT body->>'trashed_at' AS trashed FROM records WHERE owner=%s AND kind='conversation' AND body->'files' @> %s::jsonb",(owner,__import__('json').dumps([{'id':id}]))).fetchall()
+                if parents and all(r['trashed'] for r in parents):raise HTTPException(404,'Document belongs to a trashed conversation')
         if kind=='canvas' and body.get('graph'):
             self.resource(owner,action,'agent_graph',body['graph'])
         if kind=='agent_graph':

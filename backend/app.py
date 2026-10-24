@@ -46,6 +46,7 @@ def init():
         initialize(c)
         c.execute('CREATE TABLE IF NOT EXISTS records (id text PRIMARY KEY, owner text NOT NULL, kind text NOT NULL, body jsonb NOT NULL, created timestamptz DEFAULT now())')
         c.execute('CREATE INDEX IF NOT EXISTS records_tenant_kind_created ON records(owner,kind,created DESC)')
+        c.execute("CREATE INDEX IF NOT EXISTS records_trash_expiry ON records((body->>'purge_at')) WHERE kind='trash_entry'")
         from backend.commerce import initialize as initialize_commerce
         initialize_commerce(c)
         c.execute("UPDATE records SET body = body || %s::jsonb WHERE kind='execution' AND body->>'state' IN ('RUNNING','CREATED') AND body->>'question' IS NULL", (json.dumps({'state':'FAILED','error':'Process interrupted; rerun analysis. No action executed.'}),))
@@ -178,6 +179,7 @@ async def upload(id: str, file: UploadFile = File(...), owner=Depends(auth)):
     with conn() as c:
         row=c.execute("SELECT body FROM records WHERE id=%s AND owner=%s AND kind='conversation' FOR UPDATE",(id,owner)).fetchone()
         current=row['body']
+        if current.get('trashed_at'):raise HTTPException(410,'Conversation is in trash')
         if len(current['files'])>=10:raise HTTPException(422,'Maximum 10 documents per conversation')
         if c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('RUNNING','CREATED')",(owner,id)).fetchone():
             raise HTTPException(409,'Wait for the running analysis before changing its evidence')
@@ -199,7 +201,7 @@ def scoped_documents(owner,conversation):
     if not conversation.get('business_id'):return []
     # Reuse only the same project scope; local-only project data never crosses into another project.
     with conn() as c:
-        rows=c.execute("SELECT d.id,d.body FROM records d JOIN records v ON v.id=d.body->>'conversation' AND v.owner=d.owner AND v.kind='conversation' WHERE d.owner=%s AND d.kind='document' AND v.body->>'business_id'=%s AND (v.body->>'project_id') IS NOT DISTINCT FROM %s ORDER BY d.created DESC LIMIT 20",(owner,conversation['business_id'],conversation.get('project_id'))).fetchall()
+        rows=c.execute("SELECT d.id,d.body FROM records d JOIN records v ON v.id=d.body->>'conversation' AND v.owner=d.owner AND v.kind='conversation' WHERE d.owner=%s AND d.kind='document' AND v.body->>'trashed_at' IS NULL AND v.body->>'business_id'=%s AND (v.body->>'project_id') IS NOT DISTINCT FROM %s ORDER BY d.created DESC LIMIT 20",(owner,conversation['business_id'],conversation.get('project_id'))).fetchall()
     return [get(owner,row['id'],'document') for row in reversed(rows)]
 
 def business_context(owner,conversation):
@@ -565,6 +567,7 @@ async def launch(id:str,body:Message,owner=Depends(auth)):
     with conn() as c:
         row=c.execute('SELECT body FROM records WHERE id=%s AND owner=%s FOR UPDATE',(id,owner)).fetchone()
         convo=row['body']
+        if convo.get('trashed_at'):raise HTTPException(410,'Conversation is in trash')
         active=c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('CREATED','RUNNING')",(owner,id)).fetchone()
         if active:raise HTTPException(409,'This conversation already has a running analysis')
         execution_id=str(uuid4())
@@ -673,6 +676,9 @@ async def schedule_loop():
             await dispatch_pending()
             await AUTOMATIONS.tick()
             await MCP_REGISTRY.health_tick()
+            if time.monotonic()-getattr(app.state,"last_trash_cleanup",0)>60:
+                await asyncio.to_thread(TRASH.purge)
+                app.state.last_trash_cleanup=time.monotonic()
         except Exception:pass  # Database readiness is surfaced by /api/health; avoid sensitive logs.
         await asyncio.sleep(5)
 
@@ -971,3 +977,7 @@ CONNECTOR_OAUTH.install(app,auth)
 
 from backend.product_documents import install as install_product_documents
 install_product_documents(app,auth,get,conn,POLICY)
+
+from backend.trash import Trash
+TRASH=Trash({name:globals()[name] for name in ("get","listing","conn","POLICY","JOBS")})
+TRASH.install(app,auth)

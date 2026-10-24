@@ -90,11 +90,11 @@ async def response_chunks(report, question, history, mode="provider"):
     if credential and credential in serialized:raise ValueError('Credential found in model input')
     if mode=='gemini':
         from backend.gemini_gateway import completion
-        result=await completion(messages,model_for(mode,config),credential,min(1024,max(1,int(report.get('_output_limit',700)))),bool(schema))
+        result=await completion(messages,model_for(mode,config),credential,min(8192,max(1,int(report.get('_output_limit',700)))),bool(schema),max_chars=min(64000,int(report.get('_max_response_chars',16000))))
         report['usage']={'provider':config['name'],'model':model_for(mode,config),**result['usage'],'cost_usd':None,'classification':'Provider-reported token counts'}
         yield result['choices'][0]['message']['content'];return
     async with httpx.AsyncClient(timeout=httpx.Timeout(90 if mode=='local' else 25,connect=8),trust_env=mode!='local') as client:
-        async with client.stream('POST',config['url'],headers=headers,json={'model':model_for(mode,config),'max_tokens':min(512 if mode=='local' else 1024, max(1, int(report.get('_output_limit', 700)))),'stream':True,'stream_options':{'include_usage':True},'messages':messages,**({'response_format':{'type':'json_object',**({'schema':schema} if mode=='local' else {})}} if schema else {})}) as response:
+        async with client.stream('POST',config['url'],headers=headers,json={'model':model_for(mode,config),'max_tokens':min(512 if mode=='local' else 8192, max(1, int(report.get('_output_limit', 700)))),'stream':True,'stream_options':{'include_usage':True},'messages':messages,**({'response_format':{'type':'json_object',**({'schema':schema} if mode=='local' else {})}} if schema else {})}) as response:
             response.raise_for_status()
             received=0;pending='';complete='';guard=max(128,len(credential))
             async for line in response.aiter_lines():
@@ -111,7 +111,7 @@ async def response_chunks(report, question, history, mode="provider"):
                 content=choices[0].get('delta',{}).get('content') if choices else None
                 if content:
                     received+=len(content)
-                    if received>16000:raise ValueError('Response limit exceeded')
+                    if received>min(64000,int(report.get('_max_response_chars',16000))):raise ValueError('Response limit exceeded')
                     complete+=content;reject_secrets(complete)
                     if credential and credential in complete:raise ValueError('Provider reflected a credential')
                     pending+=content

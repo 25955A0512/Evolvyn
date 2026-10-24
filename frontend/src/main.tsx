@@ -1,6 +1,8 @@
 import { Component, Suspense, lazy, useEffect, useRef, useState } from "react";
 import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { studioRoutes, panelRoutes, validRoutes, pathForStudio, pathForPanel } from "./feature-routes";
+import { TrashDialog } from "./components/TrashDialog";
+import { Trash2 } from "lucide-react";
 import { OAuthReturn } from "./components/OAuthReturn";
 import { AuditLogs } from "./components/AuditLogs";
 import { createRoot } from "react-dom/client";
@@ -53,6 +55,7 @@ import "./style.css";
 import "./workspace-refresh.css";
 import "./reference-interactions.css";
 import "./product-workbench.css";
+import "./studio-ergonomics.css";
 function App() {
   const route=useLocation(),navigate=useNavigate();
   const [token, setToken] = useState(
@@ -63,6 +66,8 @@ function App() {
   const [mode, setMode] = useState("default");
   const [analysisKind, setAnalysisKind] = useState("auto");
   const [list, setList] = useState<Convo[]>([]);
+  const [trashOpen,setTrashOpen]=useState(false);
+  const trashingRuns=useRef(new Set<string>());
   const [current, setCurrent] = useState<Convo | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [business, setBusiness] = useState("");
@@ -184,6 +189,7 @@ function App() {
       .watch(
         id,
         (r: Run) => {
+          if(trashingRuns.current.has(id))return;
           setRuns((prev) => ({ ...prev, [r.id]: r }));
           if (["CREATED", "RUNNING"].includes(r.state)) {
             observedActive.current.add(id);
@@ -219,7 +225,7 @@ function App() {
         controller.signal,
       )
       .catch((e) => {
-        if (e.name !== "AbortError") handleError(e);
+        if (e.name !== "AbortError" && !trashingRuns.current.has(id)) handleError(e);
       })
       .finally(() => watches.current.delete(id));
   }
@@ -708,7 +714,7 @@ function App() {
                 <UiIcon name="automation" /> Agent workflow & tools
               </button>
             </div>
-            <div className="section">CONVERSATIONS</div>
+            <div className="conversation-section"><span className="section">CONVERSATIONS</span><button aria-label="Open conversation trash" onClick={()=>setTrashOpen(true)}><Trash2 size={16}/></button></div>
             <nav>
               {list
                 .filter(
@@ -724,7 +730,7 @@ function App() {
                   const heading = group !== lastGroup;
                   lastGroup = group;
                   return (
-                    <div key={c.id}>
+                    <div key={c.id} className="conversation-history-row">
                       {heading && (
                         <small className="history-group">{group}</small>
                       )}
@@ -736,6 +742,7 @@ function App() {
                         {c.title}
                         <small>{c.goal}</small>
                       </button>
+                      <button className="conversation-trash-button" aria-label={'Move '+c.title+' to trash'} onClick={async()=>{const owned=current?.id===c.id?current:c;const ids=owned.messages.map(m=>m.execution).filter((id):id is string=>!!id);ids.forEach(id=>trashingRuns.current.add(id));try{await api.json('/conversations/'+c.id,{method:'DELETE'});ids.forEach(id=>{watches.current.get(id)?.abort();watches.current.delete(id);observedActive.current.delete(id);});setActive(prev=>prev && ids.includes(prev)?null:prev);if(current?.id===c.id){setCurrent(null);selected.current=null;}await reload();}catch(e:any){ids.forEach(id=>trashingRuns.current.delete(id));handleError(e);}}}><Trash2 size={15}/></button>
                     </div>
                   );
                 })}
@@ -1270,6 +1277,7 @@ function App() {
           onManage={manageConnections}
         />
       )}
+      {trashOpen && <TrashDialog api={api} onClose={()=>setTrashOpen(false)} onRestore={()=>{reload().catch(handleError);}}/>}
       {preferencesTab && (
         <WorkspaceSettings
           api={api}

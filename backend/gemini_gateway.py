@@ -4,7 +4,7 @@ import httpx
 from backend.agent_memory import reject_secrets
 from backend.model_errors import ModelFailure
 
-async def completion(messages,model,credential,limit=700,json_output=False):
+async def completion(messages,model,credential,limit=700,json_output=False,max_chars=16000):
     if not credential:raise ModelFailure('model_not_configured','Gemini needs a saved, active workspace credential.')
     model=model.removeprefix('models/')
     generation={'maxOutputTokens':limit,'temperature':0.1}
@@ -28,7 +28,7 @@ async def completion(messages,model,credential,limit=700,json_output=False):
     candidate=candidates[0]
     if candidate.get('finishReason')=='MAX_TOKENS':raise ModelFailure('model_output_limit','Gemini exhausted the response token budget. Shorten the request or increase the configured agent budget.')
     text=''.join(p.get('text','') for p in candidate.get('content',{}).get('parts',[]) if not p.get('thought'))
-    if not text.strip() or len(text)>16000:raise ModelFailure('model_response_empty','Gemini returned no usable response. Check the selected model and provider restrictions.')
+    if not text.strip() or len(text)>min(64000,max_chars):raise ModelFailure('model_response_empty','Gemini returned no usable response. Check the selected model and provider restrictions.')
     reject_secrets(text)
     if credential in text:raise ModelFailure('credential_reflection','Provider output was rejected by the credential guardrail.')
     counts=payload.get('usageMetadata',{})

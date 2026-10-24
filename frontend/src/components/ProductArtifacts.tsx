@@ -155,9 +155,11 @@ export function ProductFlow({ run }: { run: any }) {
           (checkpoint.current?.id === n.id
             ? run.state === "WAITING_FOR_APPROVAL"
               ? "APPROVAL"
-              : run.state === "FAILED"
-                ? "FAILED"
-                : "RUNNING"
+              : run.state === "CANCELLED"
+                ? "CANCELLED"
+                : run.state === "FAILED"
+                  ? "FAILED"
+                  : "RUNNING"
             : checkpoint.skipped?.includes(n.id)
               ? "SKIPPED"
               : "PENDING");

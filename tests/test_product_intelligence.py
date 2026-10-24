@@ -80,7 +80,7 @@ def test_interview_proposal_requires_confirmation_and_cannot_replay(client,model
 def test_product_pipeline_approval_generates_actual_artifacts(client,models,monkeypatch):
     monkeypatch.delenv('EVOLVYN_COMPILER_URL',raising=False)
     p=product(client,True);base='/api/studio/products/'+p['id']
-    run=finish(client,client.post(base+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local'}))
+    run=finish(client,client.post(base+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local','generation':'template'}))
     assert run['state']=='WAITING_FOR_APPROVAL',(run.get('error'),run.get('graph_checkpoint'))
     assert not client.get('/api/studio/builds').json()
     binding=run['graph_checkpoint']['pending']['binding']
@@ -107,7 +107,7 @@ def test_reviewer_rejection_never_builds(client,models,monkeypatch):
             async for chunk in original(report,question,history,mode):yield chunk
     monkeypatch.setitem(module.GRAPH_HARNESS.s,'response_chunks',reject)
     p=product(client,True)
-    run=finish(client,client.post('/api/studio/products/'+p['id']+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local'}))
+    run=finish(client,client.post('/api/studio/products/'+p['id']+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local','generation':'template'}))
     assert run['state']=='COMPLETED',(run.get('error'),run.get('graph_checkpoint'))
     assert 'implementation' not in run['graph_checkpoint']['nodes']
     assert not client.get('/api/studio/builds').json()
@@ -116,13 +116,13 @@ def test_invalid_model_architecture_fails_before_write(client,models,monkeypatch
     async def bad(*args):yield '{"nodes":[],"edges":[]}'
     monkeypatch.setitem(module.GRAPH_HARNESS.s,'response_chunks',bad)
     p=product(client,True)
-    run=finish(client,client.post('/api/studio/products/'+p['id']+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local','agents':['architecture']}))
+    run=finish(client,client.post('/api/studio/products/'+p['id']+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local','generation':'template','agents':['architecture']}))
     assert run['state']=='FAILED',run
     assert not client.get('/api/studio/builds').json()
 
 def test_changed_requirements_invalidate_approved_build(client,models):
     p=product(client,True);base='/api/studio/products/'+p['id']
-    run=finish(client,client.post(base+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local'}))
+    run=finish(client,client.post(base+'/agent-build',json={'spec_id':p['id'],'revision':p['revision'],'mode':'local','generation':'template'}))
     assert run['state']=='WAITING_FOR_APPROVAL',run.get('error')
     client.post(base+'/answers',json={'revision':p['revision'],'field':'theme','text':'dark'}).raise_for_status()
     binding=run['graph_checkpoint']['pending']['binding']
@@ -205,7 +205,7 @@ def test_plan_confirmation_starts_durable_build_and_plans_files_before_approval(
     assert plan['state']=='COMPLETED',plan.get('error')
     assert len(plan['graph_checkpoint']['nodes']['proposal']['output']['proposed_requirements'])==11
     assert client.get(base).json()['requirements']=={}
-    response=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'})
+    response=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local','generation':'template'})
     assert response.status_code==202,response.text
     result=response.json();assert result['product']['ready'] and result['execution']['id']
     run_id=result['execution']['id']
@@ -218,7 +218,7 @@ def test_plan_confirmation_starts_durable_build_and_plans_files_before_approval(
     assert not client.get('/api/studio/builds').json()
     history=client.get(base+'/agent-history').json()
     assert [r['id'] for r in history]==[run_id,plan['id']]
-    assert client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'}).status_code==409
+    assert client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local','generation':'template'}).status_code==409
     binding=waiting['graph_checkpoint']['pending']['binding']
     client.post('/api/harness/executions/'+run_id+'/decision',json={'approve':True,'binding':binding}).raise_for_status()
     client.get('/api/executions/'+run_id+'/live')
@@ -231,7 +231,7 @@ def test_partial_plan_confirmation_is_saved_without_false_build_claim(client,mod
     p=product(client);base='/api/studio/products/'+p['id']
     plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Use dark theme','mode':'local','intent':'chat'}))
     assert plan['state']=='COMPLETED',plan.get('error')
-    result=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'})
+    result=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local','generation':'template'})
     assert result.status_code==202,result.text
     assert result.json()['execution'] is None and 'missing' in result.json()['launch_error']
     assert client.get(base).json()['requirements']=={'theme':'dark'}
@@ -250,7 +250,7 @@ def test_confirmed_plan_survives_launch_configuration_failure(client,planner):
 def test_confirm_plan_checks_product_scope_before_mutation(client,planner):
     p=product(client);other=product(client);base='/api/studio/products/'+p['id']
     plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Build support workspace','mode':'local','intent':'plan'}))
-    response=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':other['id'],'revision':1,'mode':'local'})
+    response=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':other['id'],'revision':1,'mode':'local','generation':'template'})
     assert response.status_code==409
     assert client.get(base).json()['requirements']=={}
 
@@ -262,4 +262,4 @@ def test_empty_planner_decisions_are_not_accepted_as_complete(client,monkeypatch
     plan=finish(client,client.post(base+'/messages',json={'spec_id':p['id'],'revision':1,'text':'Build support workspace','mode':'local','intent':'plan'}))
     assert plan['state']=='FAILED'
     assert client.get(base).json()['requirements']=={}
-    assert client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local'}).status_code==409
+    assert client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'local','generation':'template'}).status_code==409

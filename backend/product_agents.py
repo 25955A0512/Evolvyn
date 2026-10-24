@@ -1,5 +1,5 @@
 """Product interviews and deliverables composed on the existing governed graph harness."""
-import json,re
+import json,re,os
 from datetime import datetime,timezone
 from typing import Literal
 from uuid import uuid4
@@ -22,6 +22,7 @@ class Pipeline(Scope):
     mode:Literal['default','local','provider','groq','gemini','openrouter']='default'
     agents:list[Literal['prd','architecture','developer','reviewer']]=Field(default_factory=lambda:['prd','architecture','developer','reviewer'],min_length=1,max_length=4)
     build_source:bool=True
+    generation:Literal["model","template"]="model"
 class Interview(Strict):
     reply:str=Field(min_length=1,max_length=3000)
     proposed_requirements:dict[str,str]=Field(default_factory=dict,max_length=11)
@@ -79,6 +80,10 @@ class Blueprint(Strict):
     can_build:bool
 class Implement(Scope):
     blueprint:Blueprint
+    mode:Literal["default","local","provider","groq","gemini","openrouter"]="default"
+    generation:Literal["model","template"]="template"
+    file_tokens:int=Field(default=4096,ge=1024,le=8192)
+    token_budget:int=Field(default=65536,ge=8192,le=131072)
 class Built(BaseModel):
     id:str
     state:str
@@ -206,8 +211,12 @@ class ProductAgents:
         spec=self.spec(context.owner,args.spec_id,args.revision)
         if not args.blueprint.can_build or (args.blueprint.review and not args.blueprint.review.approved):raise HTTPException(409,'Reviewer requested changes; revise the product before implementation')
         blueprint=args.blueprint.model_dump();blueprint['execution_id']=context.execution_id
-        build=await self.s['STUDIO'].build(context.owner,spec['id'],args.revision,approved=context.approved,blueprint=blueprint)
-        if build['state']!='READY':raise HTTPException(422,'The actual source validation/build failed; inspect the saved build result')
+        if args.generation=='model':
+            from backend.model_source import ModelSourceBuilder
+            builder=ModelSourceBuilder(self.s)
+            build=await builder.build(context.owner,spec,blueprint,args.mode,context.approved,context.execution_id,args.file_tokens,args.token_budget)
+        else:build=await self.s['STUDIO'].build(context.owner,spec['id'],args.revision,approved=context.approved,blueprint=blueprint)
+        if build['state']!='READY':raise __import__('backend.model_errors',fromlist=['ModelFailure']).ModelFailure(build.get('error_code','source_build_failed'),build.get('error','The source build failed; inspect saved files and the build result.'))
         return {k:build[k] for k in ('id','state','source_sha256')}
     def install(self,app,auth):
         s=self.s
@@ -223,8 +232,8 @@ class ProductAgents:
           ('validate_product_blueprint',Contracts,Blueprint,self.contracts,'read'),
           ('plan_product_source',Scope,FilePlan,self.file_plan,'read'),
           ('implement_product_blueprint',Implement,Built,self.implement,'internal_write')]:
-            s['REGISTRY'].register(Tool(name,name.replace('_',' '),model,out,handler,permission='workspace.write' if risk!='read' else 'workspace.read',risk=risk,timeout=90))
-        def base(spec,goal):return {'name':goal[:100],'goal':goal[:2000],'entry':'requirements','nodes':[{'id':'requirements','type':'tool','tool':'read_product_requirements','arguments':{'spec_id':spec['id'],'revision':spec['revision']}}],'edges':[],'max_seconds':600,'max_output_tokens':4096,'max_tool_calls':5,'max_steps':12}
+            s['REGISTRY'].register(Tool(name,name.replace('_',' '),model,out,handler,permission='workspace.write' if risk!='read' else 'workspace.read',risk=risk,timeout=120))
+        def base(spec,goal):return {'name':goal[:100],'goal':goal[:2000],'entry':'requirements','nodes':[{'id':'requirements','type':'tool','tool':'read_product_requirements','arguments':{'spec_id':spec['id'],'revision':spec['revision']}}],'edges':[],'max_seconds':600,'max_output_tokens':8192,'max_tool_calls':5,'max_steps':12}
         def report(evidence=None):return {'facts':[],'evidence':evidence or [{'source':'Confirmed requirements','citation':'product requirements','excerpt':{'$ref':'nodes.requirements.output.requirements_text'}}]}
         def agent(id,role,prompt,mode,evidence=None):
             models={'interview':Interview,'planner':ProductPlan,'architecture':Architecture,'developer':Experience,'reviewer':Review}
@@ -234,7 +243,7 @@ class ProductAgents:
                 # JSON Schema is opaque data, not graph argument references.
                 if id=='planner':context['_response_schema_json']=json.dumps(schema)
                 else:context['_response_schema']=schema
-            return {'id':id,'type':'agent','agent_id':role,'prompt':prompt,'mode':mode,'timeout_seconds':90,'arguments':{'report':context}}
+            return {'id':id,'type':'agent','agent_id':role,'prompt':prompt,'mode':mode,'timeout_seconds':90,'output_tokens':(2048 if id=='planner' else 3072 if id=='prd' else 1024),'arguments':{'report':context}}
         def connect(definition):definition['edges']=[{'source':a['id'],'target':b['id']} for a,b in zip(definition['nodes'],definition['nodes'][1:])]
         @app.post('/api/studio/products/{id}/messages',status_code=202)
         async def message(id:str,body:Turn,owner=Depends(auth)):
@@ -271,7 +280,7 @@ class ProductAgents:
             if next_question(spec):raise HTTPException(422,'Confirm the required product decisions before building')
             if body.build_source and spec['requirements']['stack'] not in ('react_fastapi','react_express'):raise HTTPException(422,'This stack supports architecture/PRD drafts only; select a supported source adapter or generate blueprint only')
             d=base(spec,'Build '+spec['name']+' from approved requirements');selected=set(body.agents)
-            if body.build_source:d['nodes'].append({'id':'file_plan','type':'tool','tool':'plan_product_source','arguments':{'spec_id':id,'revision':spec['revision']}})
+            if body.build_source and body.generation=='template':d['nodes'].append({'id':'file_plan','type':'tool','tool':'plan_product_source','arguments':{'spec_id':id,'revision':spec['revision']}})
             prompts={'prd':('product_manager','PRODUCT_PRD. Write a concise project-specific PRD in Markdown: problem, users, core workflows, acceptance criteria, integration dependencies and unresolved risks. Only approved scope; do not claim features already implemented.'),'architecture':('architect','PRODUCT_ARCHITECTURE_JSON. Design the proposed architecture for THIS confirmed product. Return JSON with nodes (objects with id and label), edges (objects with source and target node IDs), and notes describing actual boundaries. Use exactly three nodes with IDs web, api, db. Label them with the confirmed frontend framework, backend framework, and PostgreSQL. Use exactly two edges: web to api, and api to db. Notes must describe private-account and owner-data boundaries. Keep all text brief. Connected components are proposed architecture, not proof of a deployed service. No invented live integrations. Do not repeat these instructions as node labels or notes.'),'developer':('developer','PRODUCT_EXPERIENCE_JSON. Design the actual product interface copy from its approved purpose, not a generic task app. Return only JSON with a product-specific headline, description, and sections (objects with heading and text). Write the actual interface copy, not descriptions of these fields. Maximum 3 sections. The verified adapter implements accounts and entity CRUD; describe unsupported integrations as requirements, not working features. No executable code or fictional business outcomes.'),'reviewer':('reviewer','PRODUCT_REVIEW_JSON. Review the proposed interface against approved requirements. Return only JSON with approved (a boolean decision), summary (your actual specific review), and issues (an array of specific unresolved issues, empty if none). Do not copy instructions or generic field descriptions into the result. This is a source-design review, not executed tests or deployment. Here approved means design consistency, not permission to execute: true still pauses for human source approval. Mark false only for a concrete contradiction or unsafe design. Internal/confidential privacy is valid for a private application; public launch is not implied. Do not invent public-access or payment requirements. Use a one-sentence summary under 160 characters; list unresolved domain work as issues.')}
             for phase in ('prd','architecture','developer','reviewer'):
                 if phase in selected:
@@ -280,7 +289,7 @@ class ProductAgents:
                     d['nodes'].append(agent(phase,role,prompt,body.mode,evidence))
             d['nodes'].append({'id':'contracts','type':'tool','tool':'validate_product_blueprint','arguments':{'spec_id':id,'revision':body.revision,**{phase:({'$ref':'nodes.'+phase+'.output.text'} if phase in selected else '') for phase in ('prd','architecture','developer','reviewer')}}})
             if body.build_source:
-                d['nodes'] += [{'id':'review_gate','type':'condition','condition':{'path':'nodes.contracts.output.can_build','op':'eq','value':True}},{'id':'implementation','type':'tool','tool':'implement_product_blueprint','arguments':{'spec_id':id,'revision':body.revision,'blueprint':{'$ref':'nodes.contracts.output'}}},{'id':'changes_needed','type':'result','arguments':{'value':{'$ref':'nodes.contracts.output.review'}}}]
+                d['nodes'] += [{'id':'review_gate','type':'condition','condition':{'path':'nodes.contracts.output.can_build','op':'eq','value':True}},{'id':'implementation','type':'tool','tool':'implement_product_blueprint','timeout_seconds':120,'arguments':{'spec_id':id,'revision':body.revision,'blueprint':{'$ref':'nodes.contracts.output'},'mode':body.mode,'generation':body.generation,'file_tokens':max(1024,min(8192,int(os.getenv('EVOLVYN_PRODUCT_FILE_TOKENS','4096')))),'token_budget':max(8192,min(131072,int(os.getenv('EVOLVYN_PRODUCT_TOKEN_BUDGET','65536'))))}},{'id':'changes_needed','type':'result','arguments':{'value':{'$ref':'nodes.contracts.output.review'}}}]
                 connect(d);d['edges']=[e for e in d['edges'] if e['source'] not in ('review_gate','implementation')]+[{'source':'review_gate','target':'implementation','when':'true'},{'source':'review_gate','target':'changes_needed','when':'false'}]
             else:connect(d)
             return await self.graph(owner,spec,d)
