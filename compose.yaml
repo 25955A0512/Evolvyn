@@ -13,6 +13,32 @@ services:
       timeout: 3s
       retries: 20
     restart: unless-stopped
+  vault_init:
+    image: python:3.12.14-slim
+    user: "0:0"
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - ./.local/vault.key:/source/vault.key:ro
+      - vault_secrets:/vault
+    command:
+      - python
+      - -c
+      - |
+        import os
+        from pathlib import Path
+        source=Path('/source/vault.key').read_bytes()
+        target=Path('/vault/vault.key')
+        if target.exists() and target.read_bytes()!=source:
+            raise SystemExit('Vault master key mismatch. Restore the original private key before starting.')
+        if not target.exists():
+            descriptor=os.open(target,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+            with os.fdopen(descriptor,'wb') as stream: stream.write(source)
+        os.chown(target,10001,10001)
+        target.chmod(0o600)
   api:
     build: .
     env_file:
@@ -21,6 +47,7 @@ services:
         format: raw
     environment:
       APP_ENV: production
+      EVOLVYN_VAULT_KEY_FILE: /run/evolvyn-secrets/vault.key
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
       NO_PROXY: localhost,127.0.0.1,db,api
@@ -32,9 +59,12 @@ services:
     extra_hosts:
       - "${EVOLVYN_PROXY_HOST:-proxy}:${EVOLVYN_PROXY_IP:-127.0.0.1}"
     volumes:
+      - vault_secrets:/run/evolvyn-secrets:ro
       - ./.local/models:/models:ro
       - ./.local/llama:/runtime:ro
     depends_on:
+      vault_init:
+        condition: service_completed_successfully
       db:
         condition: service_healthy
     healthcheck:
@@ -53,3 +83,4 @@ services:
     restart: unless-stopped
 volumes:
   database:
+  vault_secrets:

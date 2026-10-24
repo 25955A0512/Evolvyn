@@ -11,6 +11,7 @@ from pydantic import BaseModel,ConfigDict,Field,model_validator
 from backend.registry import ToolContext
 from backend.tool_plugins import fingerprint,digest
 from backend.policy import ACTOR,Principal
+from backend.model_access import model_scope,effective_mode
 from backend.execution_queue import WORKER
 
 class Retry(BaseModel):
@@ -25,10 +26,12 @@ class Node(BaseModel):
     model_config=ConfigDict(extra='forbid')
     id:str=Field(pattern=r'^[A-Za-z][A-Za-z0-9_]{0,39}$')
     type:Literal['tool','agent','condition','approval','result']
+    agent_id:str=Field(default='supervisor',pattern=r'^[a-z][a-z0-9_]{2,59}$')
+    max_visits:int=Field(default=10,ge=1,le=100)
     tool:str|None=None
     arguments:dict=Field(default_factory=dict)
     prompt:str=Field(default='',max_length=2000)
-    mode:Literal['evidence','local','provider','groq','gemini']='evidence'
+    mode:Literal['default','evidence','local','provider','groq','gemini','openrouter']='evidence'
     condition:Condition|None=None
     retry:Retry=Field(default_factory=Retry)
     timeout_seconds:int=Field(default=30,ge=1,le=120)
@@ -63,7 +66,7 @@ class Definition(BaseModel):
 class PlanInput(BaseModel):
     goal:str=Field(min_length=3,max_length=2000)
     conversation_id:str
-    mode:Literal['evidence','local','provider','groq','gemini']='evidence'
+    mode:Literal['default','evidence','local','provider','groq','gemini','openrouter']='evidence'
 class Start(BaseModel):
     conversation_id:str
 class Decision(BaseModel):
@@ -166,11 +169,15 @@ class GraphHarness:
                         if cp['steps']>=definition.max_steps:raise ValueError('Graph step/iteration budget exhausted')
                         node_id=next_ready(definition,cp,cyclic);cp['steps']+=1
                         cp['visits'][node_id]=cp['visits'].get(node_id,0)+1
+                        if cp['visits'][node_id]>nodes[node_id].max_visits:raise ValueError('Graph step/iteration budget exhausted for this node')
                         cp['current']={'id':node_id,'visit':cp['visits'][node_id],'status':'pending'}
                     current=cp['current'];node=nodes[current['id']];outcome='always';arguments=resolve(node.arguments,cp)
                     self.event(cp,node.id,'Running '+node.type+' node',node_type=node.type)
                     self.checkpoint(owner,id,cp)
                     if node.type=='tool':
+                        if s.get('AGENTS'):
+                            role=s['AGENTS'].definition(owner,node.agent_id)
+                            if not role.get('unrestricted_tools') and node.tool not in role['allowed_tools']:raise HTTPException(403,'Tool is outside this agent capability set')
                         spec=s['TOOL_PLUGINS'].validate(owner,node.tool,arguments)
                         if current['status']=='executing' and spec['risk']!='read' and not spec['idempotent']:
                             raise ValueError('Interrupted non-idempotent tool outcome is uncertain; reconcile before retrying')
@@ -203,28 +210,33 @@ class GraphHarness:
                         if last_error:raise last_error
                         cp['events'].extend(context.trace)
                     elif node.type=='agent':
-                        s['POLICY'].data(owner,conversation,node.mode)
-                        reserve=0 if node.mode=='evidence' else min(512 if node.mode=='local' else 700,definition.max_output_tokens-cp['tokens_reserved'])
-                        if node.mode!='evidence' and reserve<1:raise ValueError('Model output-token budget exhausted')
-                        report=arguments.get('report')
-                        if not isinstance(report,dict) or 'facts' not in report or 'evidence' not in report:
-                            report={'facts':[],'evidence':[{'source':'Prior authorized tool output','citation':'workflow node outputs','excerpt':json.dumps(arguments)[:5000]}]}
-                        report=dict(report,_output_limit=reserve or 512)
-                        text=''
-                        for attempt in range(node.retry.attempts):
-                            if cp['tokens_reserved']+reserve>definition.max_output_tokens:raise ValueError('Model output-token budget exhausted')
-                            cp['tokens_reserved']+=reserve;self.checkpoint(owner,id,cp,output='')
+                        with model_scope(owner,node.agent_id):
+                            selected_mode=effective_mode(node.mode)
+                            s['POLICY'].data(owner,conversation,selected_mode)
+                            reserve=0 if selected_mode=='evidence' else min(512 if selected_mode=='local' else 700,definition.max_output_tokens-cp['tokens_reserved'])
+                            if selected_mode!='evidence' and reserve<1:raise ValueError('Model output-token budget exhausted')
+                            report=arguments.get('report')
+                            if not isinstance(report,dict) or 'facts' not in report or 'evidence' not in report:
+                                report={'facts':[],'evidence':[{'source':'Prior authorized tool output','citation':'workflow node outputs','excerpt':json.dumps(arguments)[:5000]}]}
+                            report=dict(report,_output_limit=reserve or 512)
+                            if s.get('MEMORY'):
+                                recalled=s['MEMORY'].recall(owner,node.prompt or definition.goal,conversation.get('project_id'),node.agent_id,4)
+                                report['evidence']=list(report['evidence'])+[{'source':'Reviewed memory','citation':'memory:'+m['id'],'excerpt':m['text']} for m in recalled]
                             text=''
-                            try:
-                                async with asyncio.timeout(node.timeout_seconds):
-                                    async for chunk in s['response_chunks'](report,node.prompt or definition.goal,[],node.mode):
-                                        text+=chunk;self.checkpoint(owner,id,cp,output=text)
-                                break
-                            except Exception as error:
-                                if not retryable(error) or attempt+1>=node.retry.attempts:raise
-                                self.event(cp,node.id,'Transient model failure; retrying within the same provider and budget',attempt=attempt+1)
-                                await asyncio.sleep(node.retry.backoff_seconds*2**attempt)
-                        output={'text':text,'usage':report.get('usage'),'token_budget_reserved':reserve}
+                            for attempt in range(node.retry.attempts):
+                                if cp['tokens_reserved']+reserve>definition.max_output_tokens:raise ValueError('Model output-token budget exhausted')
+                                cp['tokens_reserved']+=reserve;self.checkpoint(owner,id,cp,output='')
+                                text=''
+                                try:
+                                    async with asyncio.timeout(node.timeout_seconds):
+                                        async for chunk in s['response_chunks'](report,((s['AGENTS'].definition(owner,node.agent_id)['goal']+'\n') if s.get('AGENTS') else '')+(node.prompt or definition.goal),[],node.mode):
+                                            text+=chunk;self.checkpoint(owner,id,cp,output=text)
+                                    break
+                                except Exception as error:
+                                    if not retryable(error) or attempt+1>=node.retry.attempts:raise
+                                    self.event(cp,node.id,'Transient model failure; retrying within the same provider and budget',attempt=attempt+1)
+                                    await asyncio.sleep(node.retry.backoff_seconds*2**attempt)
+                            output={'text':text,'usage':report.get('usage'),'token_budget_reserved':reserve}
                     elif node.type=='condition':output=predicate(node.condition,cp);outcome='true' if output else 'false'
                     elif node.type=='approval':
                         binding=fingerprint({'node':node.id,'arguments':arguments,'step':cp['steps'],'execution':id})
@@ -281,9 +293,9 @@ def install(app,auth,harness):
         s['get'](owner,body.conversation_id,'conversation')
         tool='investigate_operations' if any(word in body.goal.lower() for word in ('incident','logs','outage')) else 'analyze_business'
         definition={'name':body.goal[:80],'goal':body.goal,'entry':'evidence','nodes':[
-            {'id':'evidence','type':'tool','tool':tool,'arguments':{'conversation_id':body.conversation_id,'query':body.goal},'retry':{'attempts':2,'backoff_seconds':.2}},
-            {'id':'explain','type':'agent','mode':body.mode,'prompt':body.goal,'arguments':{'report':{'$ref':'nodes.evidence.output'}},'timeout_seconds':90 if body.mode=='local' else 30},
-            {'id':'record','type':'tool','tool':'create_internal_note','arguments':{'conversation_id':body.conversation_id,'text':{'$ref':'nodes.explain.output.text'}}},
+            {'id':'evidence','type':'tool','agent_id':'business_analyst','tool':tool,'arguments':{'conversation_id':body.conversation_id,'query':body.goal},'retry':{'attempts':2,'backoff_seconds':.2}},
+            {'id':'explain','type':'agent','agent_id':'product_manager','mode':body.mode,'prompt':body.goal,'arguments':{'report':{'$ref':'nodes.evidence.output'}},'timeout_seconds':90 if body.mode=='local' else 30},
+            {'id':'record','type':'tool','agent_id':'product_manager','tool':'create_internal_note','arguments':{'conversation_id':body.conversation_id,'text':{'$ref':'nodes.explain.output.text'}}},
             {'id':'result','type':'result','arguments':{'value':{'$ref':'nodes.record.output'}}}
         ],'edges':[{'source':'evidence','target':'explain'},{'source':'explain','target':'record'},{'source':'record','target':'result'}]}
         return {'definition':Definition.model_validate(definition).model_dump(),'subgoals':[{'node':n['id'],'type':n['type'],'purpose':{'evidence':'Retrieve authorized evidence and calculate facts','explain':'Explain findings with the selected agent','record':'Request approval and save the resulting project note','result':'Return the executed result'}[n['id']]} for n in definition['nodes']]}

@@ -5,6 +5,8 @@ from uuid import uuid4
 import httpx
 from pydantic import BaseModel,Field,ConfigDict
 from backend.providers import provider_config
+from backend.agent_memory import reject_secrets
+from backend.model_access import effective_mode,key_for,model_for
 
 class Proposal(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -23,6 +25,7 @@ class Strategy(BaseModel):
     recommendations:list[Proposal]=Field(min_length=1,max_length=3)
 
 async def propose(report,question,mode):
+    mode=effective_mode(mode)
     config=provider_config(mode)
     selected_facts=report['facts'][:3]+report['facts'][-3:] if mode=='local' else report['facts'][:10]
     selected_evidence=[dict(e,excerpt=e['excerpt'][:700]) for e in report['evidence'][:2]] if mode=='local' else report['evidence'][:3]
@@ -45,9 +48,13 @@ async def propose(report,question,mode):
         instructions+=' Return JSON with recommendations containing exactly two concise proposals. Each proposal needs title, rationale, evidence (exact allowed citation strings), impact (1-5), confidence (0.3,0.5,0.7 or 0.9), effort (1-5), tasks, risks and assumptions.'
     else:instructions+=' Return JSON matching this schema: '+json.dumps(schema)
     messages=[{'role':'system','content':instructions},{'role':'user','content':json.dumps(payload)}]
-    headers={'Authorization':'Bearer '+os.environ[config['key']]} if config['key'] else {}
+    credential=key_for(mode,config)
+    serialized=json.dumps(messages)
+    reject_secrets(serialized)
+    if credential and credential in serialized:raise ValueError('Credential found in model input')
+    headers={'Authorization':'Bearer '+credential} if credential else {}
     async with httpx.AsyncClient(timeout=60 if mode=='local' else 20,trust_env=mode!='local') as client:
-        response=await client.post(config['url'],headers=headers,json={'model':os.getenv(config['model_env'],config['default_model']),'messages':messages,'max_tokens':1200,'response_format':response_format,**({'temperature':0.2} if mode=='local' else {})})
+        response=await client.post(config['url'],headers=headers,json={'model':model_for(mode,config),'messages':messages,'max_tokens':1200,'response_format':response_format,**({'temperature':0.2} if mode=='local' else {})})
         response.raise_for_status()
         parsed=Strategy.model_validate_json(response.json()['choices'][0]['message']['content'])
     proposals=[]

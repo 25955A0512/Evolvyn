@@ -13,7 +13,7 @@ root=Path.cwd();context=root/'.local/container-build'
 api=context/'api';web=context/'web'
 api.mkdir(parents=True,exist_ok=True);web.mkdir(parents=True,exist_ok=True)
 for name in ('backend','sample-data'):
-    shutil.copytree(root/name,api/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns('__pycache__'))
+    shutil.copytree(root/name,api/name,dirs_exist_ok=True,ignore=shutil.ignore_patterns('__pycache__','node_modules'))
 shutil.copytree(root/'.local/wheels',api/'wheels',dirs_exist_ok=True)
 shutil.copy2(root/'requirements.lock',api/'requirements.lock')
 shutil.copy2(root/'scripts/container_start.py',api/'container_start.py')

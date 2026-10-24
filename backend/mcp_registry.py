@@ -29,6 +29,7 @@ class ServerInput(BaseModel):
     profile:Literal['business_strategy','evidence_utilities']|None='business_strategy'
     url:str|None=Field(default=None,max_length=1000)
     auth_env:str|None=Field(default=None,pattern=r'^EVOLVYN_MCP_[A-Z0-9_]+$',max_length=100)
+    credential_id:str|None=Field(default=None,max_length=100)
     enabled:bool=True
     risk:Literal['read','internal_write','external_write','critical']='read'
     timeout_seconds:int=Field(default=15,ge=2,le=30)
@@ -73,10 +74,14 @@ def decode(result):
     return values[0] if len(values)==1 else values
 
 class MCPRegistry:
-    def __init__(self,get,save,listing,policy):self.get=get;self.save=save;self.listing=listing;self.policy=policy
+    def __init__(self,get,save,listing,policy):self.get=get;self.save=save;self.listing=listing;self.policy=policy;self.vault=None
     def server(self,owner,id):
         row=self.get(owner,id,'mcp_server')
         if not row['enabled']:raise HTTPException(409,'MCP server is disabled')
+        if row.get('credential_id') and self.vault:
+            secret=next((r for r in self.vault.rows(owner,'vault_secret') if r['id']==row['credential_id']),None)
+            if not secret or not secret['body']['enabled']:raise HTTPException(409,'MCP credential was revoked or is unavailable')
+            row['credential_version']=secret['body']['version']
         return row
     @asynccontextmanager
     async def session(self,owner,row):
@@ -92,7 +97,9 @@ class MCPRegistry:
                 hosts=self.policy.settings(owner)['allowed_mcp_hosts']
                 await public_addresses(row['url'],hosts)
                 headers={}
-                if row.get('auth_env'):
+                if row.get('credential_id'):
+                    headers['Authorization']='Bearer '+self.vault.reveal_for_service(owner,row['credential_id'],'mcp')
+                elif row.get('auth_env'):
                     credential=os.getenv(row['auth_env'])
                     if not credential:raise ValueError('Missing configured credential binding')
                     headers['Authorization']='Bearer '+credential
@@ -148,9 +155,13 @@ def install(app,auth,service):
         service.policy.require(owner,'manage_registry')
         if body.auth_env and not body.auth_env.startswith(credential_prefix(owner)):raise HTTPException(422,'Credential reference must use this organization’s MCP namespace')
         if body.transport=='stdio':
-            if not body.profile or body.url or body.auth_env:raise HTTPException(422,'Built-in stdio profiles do not accept commands, URLs or credentials')
+            if not body.profile or body.url or body.auth_env or body.credential_id:raise HTTPException(422,'Built-in stdio profiles do not accept commands, URLs or credentials')
             if body.risk!='read':raise HTTPException(422,'Built-in evidence tools are read-only')
         else:
+            if body.auth_env and body.credential_id:raise HTTPException(422,'Choose one credential reference')
+            if body.credential_id:
+                if not service.vault:raise HTTPException(503,'Vault is unavailable')
+                service.vault.reveal_for_service(owner,body.credential_id,'mcp')
             if not body.url:raise HTTPException(422,'Remote server URL is required')
             if 'risk' not in body.model_fields_set:body.risk='external_write'
             try:await public_addresses(body.url,service.policy.settings(owner)['allowed_mcp_hosts'])

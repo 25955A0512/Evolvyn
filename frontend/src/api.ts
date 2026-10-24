@@ -28,6 +28,15 @@ export function client(token: string) {
   return {
     json: async (path: string, init: RequestInit = {}) =>
       (await request(path, init)).json(),
+    async download(path: string, filename: string) {
+      const blob = await (await request(path)).blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    },
     async watch(id: string, onRun: (run: any) => void, signal: AbortSignal) {
       const response = await request("/executions/" + id + "/live", { signal });
       const reader = response.body!.getReader();

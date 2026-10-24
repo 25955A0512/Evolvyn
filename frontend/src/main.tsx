@@ -11,6 +11,11 @@ import {
   Plug,
   LogOut,
   Square,
+  ArrowUpRight,
+  Code2,
+  Users,
+  Brain,
+  KeyRound,
 } from "lucide-react";
 import { client } from "./api";
 import type { Business, Convo, Run } from "./types";
@@ -19,6 +24,7 @@ import { ExecutionView } from "./components/ExecutionView";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AccountAccess } from "./components/AccountAccess";
+import { AgentWorkspace, type StudioTab } from "./components/AgentWorkspace";
 import { AgentControlCenter } from "./components/AgentControlCenter";
 import { PlatformPanel } from "./components/PlatformPanel";
 import "@fontsource/dm-sans/400.css";
@@ -35,7 +41,7 @@ function App() {
   const [entry, setEntry] = useState("");
   const [demoConversation, setDemoConversation] = useState<string | null>(null);
   const [mode, setMode] = useState("local");
-  const [analysisKind,setAnalysisKind]=useState("business");
+  const [analysisKind, setAnalysisKind] = useState("business");
   const [list, setList] = useState<Convo[]>([]);
   const [current, setCurrent] = useState<Convo | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -56,7 +62,8 @@ function App() {
     plan: string;
     outcome: string;
   } | null>(null);
-  const [controlCenter,setControlCenter]=useState(false);
+  const [controlCenter, setControlCenter] = useState(false);
+  const [studio, setStudio] = useState<StudioTab | null>(null);
   const [panel, setPanel] = useState<
     | "tasks"
     | "reports"
@@ -192,7 +199,12 @@ function App() {
       const c = current || (await create());
       const r: Run = await api.json("/conversations/" + c.id + "/runs", {
         method: "POST",
-        body: JSON.stringify({ text, mode, allow_fallback: true,analysis_kind:analysisKind }),
+        body: JSON.stringify({
+          text,
+          mode,
+          allow_fallback: true,
+          analysis_kind: analysisKind,
+        }),
       });
       setRuns((prev) => ({ ...prev, [r.id]: r }));
       setActive(r.id);
@@ -361,7 +373,7 @@ function App() {
               if (!response.ok) throw Error("Sample workspace could not start");
               const data = await response.json();
               sessionStorage.setItem("evolvyn-token", data.token);
-              setMode(data.analysis_mode||"evidence");
+              setMode(data.analysis_mode || "evidence");
               setDemoConversation(data.conversation_id);
               setBusiness(data.business_id);
               setToken(data.token);
@@ -420,141 +432,191 @@ function App() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </label>
-          {!!identity?.organizations.length && (
-            <>
-              <div className="section">ORGANIZATION</div>
-              <select
-                aria-label="Organization"
-                className="workspace-select"
-                value={organization || identity.organizations[0].id}
-                onChange={async (e) => {
-                  const id = e.target.value;
-                  sessionStorage.setItem("evolvyn-organization", id);
-                  setOrganization(id);
-                  watches.current.forEach((w) => w.abort());
-                  setCurrent(null);
-                  selected.current = null;
-                  setBusiness("");
-                  setRuns({});
-                  try {
-                    setBusinesses(await api.json("/businesses"));
-                    await reload();
-                    setIdentity(await api.json("/auth/me"));
-                  } catch (e) {
-                    handleError(e);
-                  }
-                }}
-              >
-                {identity.organizations.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name} · {o.role}
-                  </option>
-                ))}
-              </select>
-            </>
-          )}
-          <div className="section">BUSINESS WORKSPACE</div>
-          <select
-            aria-label="Business workspace"
-            className="workspace-select"
-            value={business}
-            onChange={(e) => {
-              setBusiness(e.target.value);
-              setCurrent(null);
-              selected.current = null;
-            }}
-          >
-            <option value="">All investigations</option>
-            {businesses.map((b) => (
-              <option key={b.id} value={b.id}>
-                {b.name}
-              </option>
-            ))}
-          </select>
-          <button
-            className="add-business"
-            onClick={() => setShowBusiness(true)}
-          >
-            <Plus size={13} /> Add business
-          </button>
-          {business && (
-            <>
-              <select
-                className="workspace-select"
-                aria-label="Project"
-                value={project}
-                onChange={(e) => {
-                  setProject(e.target.value);
-                  setCurrent(null);
-                  selected.current = null;
-                }}
-              >
-                <option value="">All projects</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                className="add-business"
-                onClick={() => setPanel("projects")}
-              >
-                <Plus size={13} /> New project
-              </button>
-            </>
-          )}
-          <div className="workspace-links"><button className="control-launch" onClick={()=>setControlCenter(true)}>Agent control center <span>New</span></button>
-            <button onClick={() => setPanel("reports")}>
-              Saved reports & outcomes
-            </button>
-            <button onClick={() => setPanel("tasks")}>
-              Tasks & action plans
-            </button>
-            <button onClick={() => setPanel("automation")}>
-              Recurring analysis
-            </button>
-            <button onClick={() => setPanel("workflow")}>
-              Agent workflow & tools
-            </button>
-          </div>
-          <div className="section">CONVERSATIONS</div>
-          <nav>
-            {list
-              .filter(
-                (c) =>
-                  (!business || c.business_id === business) &&
-                  (!project || c.project_id === project) &&
-                  (c.title + " " + c.messages.map((m) => m.text).join(" "))
-                    .toLowerCase()
-                    .includes(search.toLowerCase()),
-              )
-              .map((c) => {
-                const group = historyGroup(c.created_at);
-                const heading = group !== lastGroup;
-                lastGroup = group;
-                return (
-                  <div key={c.id}>
-                    {heading && (
-                      <small className="history-group">{group}</small>
-                    )}
-                    <button
-                      className={current?.id === c.id ? "selected" : ""}
-                      key={c.id}
-                      onClick={() => open(c.id).catch(handleError)}
-                    >
-                      {c.title}
-                      <small>{c.goal}</small>
-                    </button>
-                  </div>
-                );
-              })}
-            {!list.length && (
-              <small className="empty">
-                Your investigations will appear here.
-              </small>
+          <div className="sidebar-scroll">
+            {!!identity?.organizations.length && (
+              <>
+                <div className="section">ORGANIZATION</div>
+                <select
+                  aria-label="Organization"
+                  className="workspace-select"
+                  value={organization || identity.organizations[0].id}
+                  onChange={async (e) => {
+                    const id = e.target.value;
+                    sessionStorage.setItem("evolvyn-organization", id);
+                    setOrganization(id);
+                    watches.current.forEach((w) => w.abort());
+                    setCurrent(null);
+                    selected.current = null;
+                    setBusiness("");
+                    setRuns({});
+                    try {
+                      setBusinesses(await api.json("/businesses"));
+                      await reload();
+                      setIdentity(await api.json("/auth/me"));
+                    } catch (e) {
+                      handleError(e);
+                    }
+                  }}
+                >
+                  {identity.organizations.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name} · {o.role}
+                    </option>
+                  ))}
+                </select>
+              </>
             )}
-          </nav>
+            <div className="section">BUSINESS WORKSPACE</div>
+            <select
+              aria-label="Business workspace"
+              className="workspace-select"
+              value={business}
+              onChange={(e) => {
+                setBusiness(e.target.value);
+                setCurrent(null);
+                selected.current = null;
+              }}
+            >
+              <option value="">All investigations</option>
+              {businesses.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+            <button
+              className="add-business"
+              onClick={() => setShowBusiness(true)}
+            >
+              <Plus size={13} /> Add business
+            </button>
+            {business && (
+              <>
+                <select
+                  className="workspace-select"
+                  aria-label="Project"
+                  value={project}
+                  onChange={(e) => {
+                    setProject(e.target.value);
+                    setCurrent(null);
+                    selected.current = null;
+                  }}
+                >
+                  <option value="">All projects</option>
+                  {projects.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className="add-business"
+                  onClick={() => setPanel("projects")}
+                >
+                  <Plus size={13} /> New project
+                </button>
+              </>
+            )}
+            <div className="workspace-links">
+              <button
+                className="studio-nav-link"
+                onClick={() => setStudio("build")}
+              >
+                <Code2 size={15} />
+                Build a product
+              </button>
+              <button
+                className="studio-nav-link"
+                onClick={() => setStudio("discuss")}
+              >
+                <Users size={15} />
+                Discussion room
+              </button>
+              <button
+                className="studio-nav-link"
+                onClick={() => setStudio("agents")}
+              >
+                <Activity size={15} />
+                Agents
+              </button>
+              <button
+                className="studio-nav-link"
+                onClick={() => setStudio("memory")}
+              >
+                <Brain size={15} />
+                Agent memory
+              </button>
+              <button
+                className="studio-nav-link"
+                onClick={() => setStudio("integrations")}
+              >
+                <Plug size={15} />
+                Integrations
+              </button>
+              <button
+                className="studio-nav-link"
+                onClick={() => setStudio("vault")}
+              >
+                <KeyRound size={15} />
+                Key vault
+              </button>
+              <button
+                className="control-launch"
+                onClick={() => setControlCenter(true)}
+              >
+                Agent control center <span>New</span>
+              </button>
+              <button onClick={() => setPanel("reports")}>
+                Saved reports & outcomes
+              </button>
+              <button onClick={() => setPanel("tasks")}>
+                Tasks & action plans
+              </button>
+              <button onClick={() => setPanel("automation")}>
+                Recurring analysis
+              </button>
+              <button onClick={() => setPanel("workflow")}>
+                Agent workflow & tools
+              </button>
+            </div>
+            <div className="section">CONVERSATIONS</div>
+            <nav>
+              {list
+                .filter(
+                  (c) =>
+                    (!business || c.business_id === business) &&
+                    (!project || c.project_id === project) &&
+                    (c.title + " " + c.messages.map((m) => m.text).join(" "))
+                      .toLowerCase()
+                      .includes(search.toLowerCase()),
+                )
+                .map((c) => {
+                  const group = historyGroup(c.created_at);
+                  const heading = group !== lastGroup;
+                  lastGroup = group;
+                  return (
+                    <div key={c.id}>
+                      {heading && (
+                        <small className="history-group">{group}</small>
+                      )}
+                      <button
+                        className={current?.id === c.id ? "selected" : ""}
+                        key={c.id}
+                        onClick={() => open(c.id).catch(handleError)}
+                      >
+                        {c.title}
+                        <small>{c.goal}</small>
+                      </button>
+                    </div>
+                  );
+                })}
+              {!list.length && (
+                <small className="empty">
+                  Your investigations will appear here.
+                </small>
+              )}
+            </nav>
+          </div>
           <div className="aside-bottom">
             <button onClick={() => setPanel("account")}>Account & team</button>
             <button
@@ -665,28 +727,33 @@ function App() {
               <p role="status">{providerStatus}</p>
               <p>
                 Local AI runs on this machine and needs no API key. Optional
-                remote providers use credentials from your environment settings.
-                Local-only projects prevent remote model requests.
+                remote providers use encrypted credentials configured in Key
+                vault. Local-only projects prevent remote model requests.
               </p>
             </section>
           ) : (
             <>
               {!current?.messages.length && (
-                <section className="welcome">
-                  <div className="eyebrow">
-                    <Sparkles size={16} /> CONTINUOUS BUSINESS EVOLUTION
+                <section className="welcome studio-home">
+                  <div className="home-wordmark">
+                    <span className="mark">e</span>evolvyn
                   </div>
                   <h1>
-                    Turn evidence into
-                    <br />
-                    your next move.
+                    Your next idea.
+                    <br />A team to make it happen.
                   </h1>
                   <p>
-                    A focused space to understand your business,
-                    <br />
-                    challenge assumptions, and act with confidence.
+                    Build products, understand your business, and turn the right
+                    evidence into your next decision.
                   </p>
-                  <div className="suggestions">
+                  <div className="home-actions">
+                    <button onClick={() => setStudio("build")}>
+                      <Code2 size={26} />
+                      <strong>
+                        Build a product <ArrowUpRight size={15} />
+                      </strong>
+                      <span>From requirements to a working starter</span>
+                    </button>
                     <button
                       onClick={() =>
                         setText(
@@ -694,33 +761,34 @@ function App() {
                         )
                       }
                     >
-                      <Activity size={19} />
-                      <strong>Find growth opportunities</strong>
-                      <span>Start with your conversion data ↗</span>
+                      <Activity size={22} />
+                      <strong>
+                        Grow your business <ArrowUpRight size={15} />
+                      </strong>
+                      <span>Start with your customer and conversion data</span>
                     </button>
-                    <button
-                      onClick={() =>
-                        setText(
-                          "What do customers say about onboarding friction? Cite the relevant passages.",
-                        )
-                      }
-                    >
-                      <Sparkles size={19} />
-                      <strong>Investigate customer feedback</strong>
-                      <span>Bring evidence to your next decision ↗</span>
+                    <button onClick={() => setStudio("discuss")}>
+                      <Users size={23} />
+                      <strong>
+                        Discuss your next move <ArrowUpRight size={15} />
+                      </strong>
+                      <span>A specialist team, one shared goal</span>
                     </button>
                   </div>
-                  <div className="notice">
-                    Attach TXT, CSV, PDF or DOCX evidence to begin.
-                    <br />
-                    Use sample-data/funnel.csv for a clearly synthetic
-                    demonstration.
+                  <div className="home-utility">
+                    <button onClick={() => setStudio("integrations")}>
+                      <Plus size={13} />
+                      Connect your tools
+                    </button>
+                    <button onClick={() => setStudio("vault")}>
+                      <KeyRound size={13} />
+                      Set up model keys
+                    </button>
+                    <button onClick={() => setStudio("memory")}>
+                      <Brain size={13} />
+                      Agent memory
+                    </button>
                   </div>
-                  {b && (
-                    <p className="business-context">
-                      <strong>{b.name}</strong> · {b.goal}
-                    </p>
-                  )}
                 </section>
               )}
               <div className="messages">
@@ -766,6 +834,11 @@ function App() {
                         <ExecutionView
                           run={r}
                           busy={busy}
+                          onSpecializedReview={(engine) =>
+                            engine === "langgraph_discussion"
+                              ? setStudio("discuss")
+                              : setControlCenter(true)
+                          }
                           onDecide={decide}
                           onCancel={cancel}
                           onArtifact={async (id) => {
@@ -855,12 +928,22 @@ function App() {
                     }}
                   />
                 </label>
-                <select className="mode-select" aria-label="Analysis type" value={analysisKind} onChange={e=>setAnalysisKind(e.target.value)}><option value="business">Business</option><option value="operations">Uploaded logs</option></select><select
+                <select
+                  className="mode-select"
+                  aria-label="Analysis type"
+                  value={analysisKind}
+                  onChange={(e) => setAnalysisKind(e.target.value)}
+                >
+                  <option value="business">Business</option>
+                  <option value="operations">Uploaded logs</option>
+                </select>
+                <select
                   className="mode-select"
                   aria-label="Analysis mode"
                   value={mode}
                   onChange={(e) => setMode(e.target.value)}
                 >
+                  <option value="default">Default agent model route</option>
                   <option value="local">Local AI · no API key</option>
                   <option value="evidence">Evidence only</option>
                   <option value="provider">OpenAI · optional</option>
@@ -900,7 +983,36 @@ function App() {
           </footer>
         )}
       </main>
-      {controlCenter&&<AgentControlCenter api={api} conversation={current} onClose={()=>setControlCenter(false)} onRefresh={()=>{if(current)open(current.id).catch(handleError)}}/>}
+      {studio && (
+        <AgentWorkspace
+          key={organization}
+          api={api}
+          initialTab={studio}
+          conversation={current}
+          projectId={project}
+          businessId={business}
+          onClose={() => setStudio(null)}
+          onRefresh={() => {
+            reload();
+            if (selected.current)
+              api
+                .json("/conversations/" + selected.current)
+                .then(setCurrent)
+                .catch(handleError);
+          }}
+          onManage={() => setControlCenter(true)}
+        />
+      )}
+      {controlCenter && (
+        <AgentControlCenter
+          api={api}
+          conversation={current}
+          onClose={() => setControlCenter(false)}
+          onRefresh={() => {
+            if (current) open(current.id).catch(handleError);
+          }}
+        />
+      )}
       {panel && (
         <PlatformPanel
           view={panel}

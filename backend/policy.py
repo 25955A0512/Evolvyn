@@ -20,6 +20,10 @@ class PolicyEngine:
         explicit=ACTOR.get()
         if explicit:
             if explicit.organization!=owner:raise HTTPException(403,'Organization scope mismatch')
+            if explicit.account:
+                with self.conn() as c:member=c.execute('SELECT role FROM memberships WHERE account_id=%s AND organization_id=%s',(explicit.account,owner)).fetchone()
+                if not member:raise HTTPException(403,'Execution membership was revoked')
+                return Principal(owner,explicit.account,member['role'])
             return explicit
         request=REQUEST.get();identity=getattr(request.state,'identity',None) if request else None
         if identity:
@@ -31,7 +35,7 @@ class PolicyEngine:
         return {key:(row['body'].get(key,value) if row else value) for key,value in DEFAULTS.items()}
     def require(self,owner,action):
         p=self.principal(owner)
-        if action in ('manage_policy','manage_registry','approve','manage_members') and p.role not in ('owner','admin'):
+        if action in ('manage_policy','manage_registry','approve','manage_members','manage_vault') and p.role not in ('owner','admin'):
             # Sample owners can approve only their own fixed internal demonstration action.
             if not (p.role=='demo' and action=='approve'):raise HTTPException(403,'Administrator permission required')
         if action not in ('read',) and p.role=='viewer':raise HTTPException(403,'Viewer access is read-only')

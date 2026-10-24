@@ -8,7 +8,9 @@ export function ExecutionView({
   onDecide,
   onCancel,
   onArtifact,
+  onSpecializedReview,
 }: {
+  onSpecializedReview?: (engine: string) => void;
   run: Run;
   busy: boolean;
   onDecide: (
@@ -60,49 +62,64 @@ export function ExecutionView({
         />
       )}
       {run.error && <p className="error">{run.error}</p>}
-      {run.state === "WAITING_FOR_APPROVAL" && run.report && (
-        <div className="approval">
-          <h3>Review proposed action</h3>
-          <p>
-            Create an internal experiment brief. Business results will need
-            separate measurement.
-          </p>
-          <textarea
-            aria-label="Action plan"
-            value={plan ?? run.report.plan}
-            onChange={(e) => setPlan(e.target.value)}
-          />
-          <div>
-            <button
-              disabled={busy || !(plan ?? run.report.plan).trim()}
-              className="primary"
-              onClick={() =>
-                onDecide(
-                  run,
-                  true,
-                  plan ?? run.report!.plan,
-                  recommendationId || undefined,
-                )
-              }
-            >
-              <Check size={15} /> Approve & create brief
-            </button>
-            <button
-              disabled={busy}
-              onClick={() =>
-                onDecide(
-                  run,
-                  false,
-                  plan ?? run.report!.plan,
-                  recommendationId || undefined,
-                )
-              }
-            >
-              <X size={15} /> Reject
-            </button>
+      {run.state === "WAITING_FOR_APPROVAL" &&
+        run.engine &&
+        ["graph", "langgraph_discussion"].includes(run.engine) && (
+          <button
+            className="primary"
+            onClick={() => onSpecializedReview?.(run.engine!)}
+          >
+            Review in{" "}
+            {run.engine === "langgraph_discussion"
+              ? "Discussion room"
+              : "Agent control center"}
+          </button>
+        )}
+      {run.state === "WAITING_FOR_APPROVAL" &&
+        !["graph", "langgraph_discussion"].includes(run.engine || "") &&
+        run.report && (
+          <div className="approval">
+            <h3>Review proposed action</h3>
+            <p>
+              Create an internal experiment brief. Business results will need
+              separate measurement.
+            </p>
+            <textarea
+              aria-label="Action plan"
+              value={plan ?? run.report.plan}
+              onChange={(e) => setPlan(e.target.value)}
+            />
+            <div>
+              <button
+                disabled={busy || !(plan ?? run.report.plan).trim()}
+                className="primary"
+                onClick={() =>
+                  onDecide(
+                    run,
+                    true,
+                    plan ?? run.report!.plan,
+                    recommendationId || undefined,
+                  )
+                }
+              >
+                <Check size={15} /> Approve & create brief
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  onDecide(
+                    run,
+                    false,
+                    plan ?? run.report!.plan,
+                    recommendationId || undefined,
+                  )
+                }
+              >
+                <X size={15} /> Reject
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       {run.artifact && (
         <button className="success" onClick={() => onArtifact(run.artifact!)}>
           ✓ Open saved experiment brief →

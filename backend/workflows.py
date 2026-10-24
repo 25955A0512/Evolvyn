@@ -13,7 +13,7 @@ class Workflow(BaseModel):
     model_config=ConfigDict(extra='forbid')
     name:str=Field(min_length=1,max_length=100)
     focus:str=Field(min_length=3,max_length=1000)
-    mode:Literal['evidence','local','provider','groq','gemini']='local'
+    mode:Literal['default','evidence','local','provider','groq','gemini','openrouter']='local'
     research:bool=False
     citations:int=Field(default=5,ge=1,le=5)
     recommendations:int=Field(default=3,ge=1,le=3)

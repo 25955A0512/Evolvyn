@@ -385,6 +385,12 @@ export function PlatformPanel({
                       Analysis mode
                       <select name="mode">
                         <option value="evidence">Evidence only</option>
+                        <option value="default">
+                          Default agent model route
+                        </option>
+                        <option value="openrouter">
+                          OpenRouter · your key
+                        </option>
                         <option value="local">Local AI · no key</option>
                         <option value="provider">
                           Selected remote provider

@@ -55,7 +55,7 @@ class ToolPlugins:
         server=self.mcp.server(owner,row['server_id'])
         discovered=next((t for t in server.get('tools',[]) if t['name']==row['remote_tool']),None)
         if not discovered:raise HTTPException(409,'Probe the MCP server to discover this tool')
-        return {**row,'input_schema':discovered['input_schema'],'output_schema':None,'protocol_output_schema':discovered.get('output_schema'),'risk':server['risk'],'permission':'workspace.read' if server['risk']=='read' else 'workspace.write','timeout_seconds':server['timeout_seconds'],'idempotent':server['risk']=='read','server_version':fingerprint({k:server.get(k) for k in ('profile','url','auth_env','risk','enabled','updated_at','tools')})}
+        return {**row,'input_schema':discovered['input_schema'],'output_schema':None,'protocol_output_schema':discovered.get('output_schema'),'risk':server['risk'],'permission':'workspace.read' if server['risk']=='read' else 'workspace.write','timeout_seconds':server['timeout_seconds'],'idempotent':server['risk']=='read','server_version':fingerprint({k:server.get(k) for k in ('profile','url','auth_env','credential_id','credential_version','risk','enabled','updated_at','tools')})}
     def catalog(self,owner,capability='',entity=''):
         names=list(self.registry.tools)+[t['name'] for t in self.listing(owner,'registered_tool') if t['enabled']]
         result=[]

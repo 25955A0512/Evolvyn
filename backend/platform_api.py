@@ -25,7 +25,7 @@ class ScheduleInput(BaseModel):
     conversation_id:str
     query:str=Field(min_length=3,max_length=2000)
     interval_minutes:int=Field(ge=1,le=10080)
-    mode:Literal['evidence','provider','local','groq','gemini']='evidence'
+    mode:Literal['default','evidence','provider','local','groq','gemini','openrouter']='evidence'
     enabled:bool=True
 
 class ScheduleToggle(BaseModel):
@@ -87,7 +87,7 @@ def install(app,services):
     @app.post('/api/schedules')
     def schedule(body:ScheduleInput,owner=Depends(auth)):
         get(owner,body.conversation_id,'conversation')
-        return save(owner,'schedule',{**body.model_dump(),'next_run_at':(datetime.now(timezone.utc)+timedelta(minutes=body.interval_minutes)).isoformat(),'last_run':None,'last_error':None})
+        return save(owner,'schedule',{**body.model_dump(),'actor':services['POLICY'].principal(owner).account,'next_run_at':(datetime.now(timezone.utc)+timedelta(minutes=body.interval_minutes)).isoformat(),'last_run':None,'last_error':None})
 
     @app.patch('/api/schedules/{id}')
     def toggle(id:str,body:ScheduleToggle,owner=Depends(auth)):

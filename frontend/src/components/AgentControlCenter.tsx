@@ -349,6 +349,7 @@ export function AgentControlCenter({
                                           "profile",
                                           "url",
                                           "auth_env",
+                                          "credential_id",
                                           "risk",
                                           "timeout_seconds",
                                         ]
@@ -396,6 +397,7 @@ export function AgentControlCenter({
                             profile: transport === "stdio" ? d.profile : null,
                             url: transport === "streamable_http" ? d.url : null,
                             auth_env: d.auth_env || null,
+                            credential_id: d.credential_id || null,
                             risk: transport === "stdio" ? "read" : d.risk,
                             timeout_seconds: 15,
                             enabled: true,
@@ -458,6 +460,13 @@ export function AgentControlCenter({
                           network destinations and embedded credentials are
                           rejected.
                         </small>
+                        <label>
+                          Vault credential ID
+                          <input
+                            name="credential_id"
+                            placeholder="Copy an MCP credential reference from Key vault"
+                          />
+                        </label>
                         <label>
                           Credential variable reference
                           <input
@@ -644,7 +653,11 @@ export function AgentControlCenter({
                           </label>
                           <label>
                             Discovered tool
-                            <select aria-label="Discovered tool" required name="remote_tool">
+                            <select
+                              aria-label="Discovered tool"
+                              required
+                              name="remote_tool"
+                            >
                               <option value="">Choose a tool</option>
                               {chosenServer?.tools?.map((t: any) => (
                                 <option key={t.name} value={t.name}>
@@ -862,6 +875,9 @@ export function AgentControlCenter({
                         >
                           <option value="evidence">
                             Deterministic evidence
+                          </option>
+                          <option value="default">
+                            Per-agent vault routes
                           </option>
                           <option value="local">Local AI · no key</option>
                         </select>

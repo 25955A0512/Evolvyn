@@ -223,9 +223,12 @@ export function WorkflowCanvas({
         <label>
           Model
           <select
-            aria-label="Workflow model" value={template.mode}
+            aria-label="Workflow model"
+            value={template.mode}
             onChange={(e) => setTemplate({ ...template, mode: e.target.value })}
           >
+            <option value="default">Default agent model route</option>
+            <option value="openrouter">OpenRouter · your key</option>
             <option value="local">Local AI · no API key</option>
             <option value="evidence">Evidence-only fallback</option>
             <option value="provider">OpenAI · optional key</option>

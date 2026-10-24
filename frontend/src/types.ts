@@ -11,8 +11,8 @@ export type Source = {
   retrieved_at: string;
 };
 export type Report = {
-  operations?:any;
-  knowledge_scope?:string;
+  operations?: any;
+  knowledge_scope?: string;
   provider_status?: string;
   strategy_fallback?: string;
   strategy_engine?: string;
@@ -33,6 +33,7 @@ export type Report = {
   market_research: string;
 };
 export type Run = {
+  engine?: string;
   id: string;
   state: string;
   events: { stage: string; detail: string }[];

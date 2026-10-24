@@ -1,0 +1,113 @@
+"""Live UI acceptance for the product studio, vault, role routing and discussion memory."""
+from playwright.sync_api import sync_playwright,expect
+from pathlib import Path
+from uuid import uuid4
+import os,re,zipfile
+base=os.getenv('EVOLVYN_TEST_URL','http://localhost:3000')
+out=Path('/workspace/Evolvyn/.local/validation');out.mkdir(parents=True,exist_ok=True)
+with sync_playwright() as p:
+    browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--disable-dev-shm-usage'])
+    page=browser.new_page(viewport={'width':1512,'height':1050});errors=[]
+    page.on('pageerror',lambda e:errors.append(str(e)))
+    page.goto(base)
+    page.get_by_role('button',name='Create account',exact=True).click()
+    page.get_by_label('Workspace name',exact=True).fill('Northstar product team')
+    page.get_by_label('Email',exact=True).fill('studio-'+uuid4().hex[:10]+'@example.test')
+    page.get_by_label('Password',exact=True).fill('browser-acceptance-'+uuid4().hex)
+    page.get_by_role('button',name='Create your workspace',exact=True).click()
+    page.get_by_role('heading',name=re.compile('Your next idea')).wait_for()
+    page.screenshot(path=str(out/'studio-home.png'))
+    page.locator('.home-actions').get_by_role('button',name=re.compile('^Build a product')).click()
+    studio=page.locator('.agent-workspace')
+    studio.get_by_label('Product name',exact=True).fill('Northstar customer portal')
+    studio.get_by_label('Product goal',exact=True).fill('A private workspace to track customer activation tasks')
+    with page.expect_response(lambda r:r.url.endswith('/api/studio/products') and r.request.method=='POST') as response:
+        studio.get_by_role('button',name='Start requirements discussion',exact=True).click()
+    product=response.value.json()
+    for _ in range(11):
+        field=product['next_question']['field']
+        if field=='accent':studio.get_by_label('Requirement answer',exact=True).fill('#4b67c9')
+        with page.expect_response(lambda r:r.url.endswith('/answers') and r.request.method=='POST') as response:
+            studio.get_by_role('button',name='Confirm requirement',exact=True).click()
+        product=response.value.json()
+        assert response.value.ok,response.value.text()
+    assert product['ready'] is True
+    with page.expect_response(lambda r:r.url.endswith('/build') and r.request.method=='POST') as response:
+        studio.get_by_role('button',name='Build product starter',exact=True).click()
+    build=response.value.json();assert build['state']=='READY',build
+    preview=studio.locator('.product-preview')
+    preview.get_by_label('Title',exact=True).fill('Interview five activation users')
+    preview.get_by_label('Status',exact=True).fill('Planned')
+    preview.get_by_role('button',name='Add Tasks',exact=True).click()
+    expect(preview.locator('.prototype-records')).to_contain_text('Interview five activation users')
+    studio.locator('.studio-scroll').evaluate('node=>{node.scrollTop=0}')
+    page.screenshot(path=str(out/'product-studio-preview.png'))
+    studio.get_by_role('button',name='Code',exact=True).click()
+    studio.get_by_label('Source file',exact=True).select_option('backend/app.py')
+    expect(studio.locator('.source-browser pre')).to_contain_text("@app.post('/api/register'")
+    with page.expect_download() as download:
+        studio.get_by_role('button',name='Download source',exact=True).click()
+    archive=out/'browser-generated-product.zip';download.value.save_as(archive)
+    assert 'backend/app.py' in zipfile.ZipFile(archive).namelist()
+    page.reload()
+    page.get_by_role('button',name='Build a product',exact=True).click()
+    studio=page.locator('.agent-workspace')
+    studio.get_by_label('Saved product',exact=True).select_option(product['id'])
+    expect(studio.locator('.prototype-records')).to_contain_text('Interview five activation users')
+    studio.get_by_role('button',name='Key vault',exact=True).click()
+    studio.get_by_label('Credential name',exact=True).fill('Acceptance credential · not a live API key')
+    key='browser-test-key-'+uuid4().hex
+    studio.get_by_label('Secret value',exact=True).fill(key)
+    studio.get_by_role('button',name='Save encrypted key',exact=True).click()
+    studio.get_by_role('status').filter(has_text='Credential encrypted and stored').wait_for()
+    assert studio.get_by_label('Secret value',exact=True).input_value()==''
+    assert key not in studio.inner_text()
+    studio.get_by_label('Route provider',exact=True).select_option('evidence')
+    studio.get_by_role('button',name='Save model route',exact=True).click()
+    studio.get_by_role('status').filter(has_text='Model route saved').wait_for()
+    studio.locator('.studio-scroll').evaluate('node=>{node.scrollTop=0}')
+    page.screenshot(path=str(out/'key-vault-preview.png'))
+    studio.get_by_role('button',name='Agent memory',exact=True).click()
+    studio.get_by_label('Memory',exact=True).fill('Prefer accessible dark themes for customer dashboards')
+    studio.locator('select[name=category]').select_option('preference')
+    studio.get_by_role('button',name='Submit for memory review',exact=True).click()
+    entry=studio.locator('.memory-entry').filter(has_text='Prefer accessible dark themes')
+    entry.get_by_role('button',name='Accept memory',exact=True).click()
+    expect(entry.locator('.status-pill')).to_have_text('ACCEPTED')
+    studio.get_by_role('button',name='Discussion room',exact=True).click()
+    studio.get_by_role('button',name='Create discussion workspace',exact=True).click()
+    studio.get_by_label('Discussion evidence file',exact=True).set_input_files('/workspace/Evolvyn/sample-data/funnel.csv')
+    studio.locator('.discussion-files').filter(has_text='funnel.csv').wait_for()
+    studio.get_by_label(re.compile('^Decision or business goal')).fill('Review conversion evidence and decide the next product investigation')
+    studio.get_by_role('button',name='Start specialist discussion',exact=True).click()
+    studio.get_by_role('button',name='Approve & remember decision',exact=True).wait_for(timeout=45000)
+    expect(studio.locator('.specialist-output')).to_have_count(4)
+    studio.get_by_label('Reviewed discussion plan',exact=True).fill('Validate the 8% and 5% conversion observations. Use an accessible dark theme for the customer portal.')
+    studio.get_by_role('button',name='Approve & remember decision',exact=True).click()
+    studio.get_by_text('Approved decision saved to scoped agent memory.',exact=True).wait_for()
+    studio.locator('.studio-scroll').evaluate('node=>{node.scrollTop=0}')
+    page.screenshot(path=str(out/'discussion-room-preview.png'))
+    studio.get_by_role('button',name='Agent memory',exact=True).click()
+    expect(studio.locator('.memory-entry').filter(has_text='Validate the 8% and 5%')).to_have_count(1)
+    studio.get_by_role('button',name='Build a product',exact=True).click()
+    studio.get_by_label('Saved product',exact=True).select_option(product['id'])
+    studio.get_by_label('Reviewed product decision',exact=True).select_option(index=1)
+    studio.get_by_label('Decision requirement changes',exact=True).fill('{"theme":"dark"}')
+    with page.expect_response(lambda r:r.url.endswith('/decisions') and r.request.method=='POST') as decision_response:
+        studio.get_by_role('button',name='Apply reviewed decision',exact=True).click()
+    revised=decision_response.value.json()
+    assert revised['revision']==product['revision']+1 and revised['requirements']['theme']=='dark'
+    assert 'dark' not in studio.locator('.product-preview').get_attribute('class')
+    expect(studio.locator('.prototype-records')).to_contain_text('Interview five activation users')
+    studio.get_by_role('button',name='Integrations',exact=True).click()
+    studio.get_by_label('Search integrations',exact=True).fill('memory')
+    expect(studio.locator('.capability-list')).to_contain_text('recall_agent_memory')
+    studio.get_by_role('button',name='Agents',exact=True).click()
+    expect(studio.locator('.agent-catalog article')).to_have_count(7)
+    page.set_viewport_size({'width':390,'height':844})
+    page.screenshot(path=str(out/'agents-mobile-preview.png'))
+    widths=studio.locator('.studio-scroll').evaluate('node=>({scroll:node.scrollWidth,client:node.clientWidth})')
+    assert widths['scroll']<=widths['client']+1,widths
+    assert not errors,errors
+    print('PASS: requirements interview → source build → persistent prototype CRUD → source download → reload → encrypted vault UI → shared model route → reviewed memory → actual LangGraph handoffs → approved decision memory; desktop/mobile, no browser errors')
+    browser.close()

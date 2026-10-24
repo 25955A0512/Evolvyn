@@ -22,3 +22,10 @@ if proxy:
         path.write_text('\n'.join(lines)+'\n');path.chmod(0o600)
     except OSError:pass
 print('Private deployment configuration ready; no secret values displayed')
+
+# Keep the encryption key outside the database; back it up separately.
+import base64
+vault_key = path.parent / "vault.key"
+if not vault_key.exists():
+    descriptor = os.open(vault_key, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(descriptor, "wb") as key_file: key_file.write(base64.urlsafe_b64encode(secrets.token_bytes(32)))
