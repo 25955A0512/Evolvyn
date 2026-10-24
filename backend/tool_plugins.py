@@ -9,6 +9,7 @@ from jsonschema import Draft202012Validator,ValidationError as SchemaValidationE
 from pydantic import BaseModel,ConfigDict,Field
 from backend.policy import RISK
 from backend.registry import ToolContext
+from backend.mcp_registry import is_external
 
 class Registration(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -81,12 +82,16 @@ class ToolPlugins:
         except SchemaValidationError:raise HTTPException(422,'Tool arguments do not match the registered input contract; inspect the tool schema and supply the required fields')
         if spec.get('builtin')=='create_experiment_brief':self.get(owner,arguments['execution_id'],'execution')
         conversation=self.get(owner,arguments['conversation_id'],'conversation') if arguments.get('conversation_id') else None
-        if spec['adapter']=='mcp' and self.mcp.server(owner,spec['server_id'])['transport']=='streamable_http':
+        if spec['adapter']=='mcp' and is_external(self.mcp.server(owner,spec['server_id'])):
             if not self.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'Organization policy forbids external processing')
             if conversation:self.policy.data(owner,conversation,'mcp')
         return spec
     async def invoke(self,owner,name,arguments,context,approved=False):
         spec=self.validate(owner,name,arguments)
+        if spec['adapter']=='mcp' and context.execution_id and is_external(self.mcp.server(owner,spec['server_id'])):
+            execution=self.get(owner,context.execution_id,'execution')
+            conversation=self.get(owner,execution['conversation'],'conversation')
+            self.policy.data(owner,conversation,'mcp')
         self.policy.tool(owner,name,spec['risk'],spec['permission'],context.permissions,approved)
         context.approved=approved
         context.exposed_name=name

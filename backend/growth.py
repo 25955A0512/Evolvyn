@@ -1,4 +1,5 @@
 """Comparable public discussion windows + first-party evidence, never invented market growth."""
+from backend.mcp_registry import is_external
 import asyncio
 import json
 import re
@@ -88,7 +89,7 @@ def install(app,auth,s,memory):
             if spec['risk']!='read':raise HTTPException(422,'Growth evidence accepts read-only tools')
             # An explicit same-conversation argument prevents cross-project ingestion.
             if call.arguments.get('conversation_id',body.conversation_id)!=body.conversation_id:raise HTTPException(422,'Connector context must match this conversation')
-            if spec['adapter']=='mcp' and s['TOOL_PLUGINS'].mcp.server(owner,spec['server_id'])['transport']=='streamable_http':s['POLICY'].data(owner,conversation,'mcp')
+            if spec['adapter']=='mcp' and is_external(s['TOOL_PLUGINS'].mcp.server(owner,spec['server_id'])):s['POLICY'].data(owner,conversation,'mcp')
             value=await s['TOOL_PLUGINS'].invoke(owner,call.name,call.arguments,ToolContext(owner))
             excerpt=json.dumps(value)[:6000];reject_secrets(excerpt)
             external.append({'citation':'registered-tool:'+call.name,'source':call.name,'excerpt':excerpt,'classification':'Connector-provided observation; verify scope and freshness'})

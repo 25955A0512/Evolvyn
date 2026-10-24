@@ -38,6 +38,9 @@ def key_for(mode, config):
     route = binding()
     if route and route['provider'] == mode and route.get('credential_id'):
         return VAULT.reveal_for_service(SCOPE.get()[0], route['credential_id'], mode)
+    if VAULT and SCOPE.get():
+        credential=VAULT.credential_for(SCOPE.get()[0],mode)
+        if credential:return VAULT.reveal_for_service(SCOPE.get()[0],credential,mode)
     return os.getenv(config['key'], '') if config.get('key') else ''
 
 def model_for(mode, config):

@@ -1,5 +1,6 @@
 """Bounded role agents sharing one model gateway, memory policy and output guardrails."""
 import asyncio
+import os
 import json
 import re
 import httpx
@@ -32,9 +33,10 @@ class AgentGateway:
     def __init__(self, get, save, listing, policy, memory, vault, tools):
         self.get,self.save,self.listing,self.policy,self.memory,self.vault,self.tools = get,save,listing,policy,memory,vault,tools
     def catalog(self, owner):
-        builtin = [{'agent': id, 'name': name, 'goal': ROLES[id], 'allowed_tools': ({'business_analyst':['analyze_business','investigate_operations','recall_agent_memory'],'marketing_analyst':['recall_agent_memory'],'product_manager':['prioritize_actions','create_internal_note','recall_agent_memory'],'architect':['recall_agent_memory'],'developer':['build_product','recall_agent_memory'],'reviewer':['analyze_business','recall_agent_memory']}.get(id,[])), 'unrestricted_tools':id=='supervisor', 'output_tokens': 384, 'builtin': True} for id,name in AGENTS.items()]
-        routes={row['agent']:row for row in self.vault.bindings(owner)}
-        return [{**row,'route':routes.get(row['agent'],routes.get('default',{'provider':'local','agent':'default','model':''}))} for row in builtin+self.listing(owner,'agent_definition')]
+        builtin = [{'agent': id, 'name': name, 'goal': ROLES[id], 'allowed_tools': ({'business_analyst':['analyze_business','investigate_operations','recall_agent_memory'],'marketing_analyst':['recall_agent_memory'],'product_manager':['prioritize_actions','create_internal_note','recall_agent_memory'],'architect':['recall_agent_memory'],'developer':['build_product','recall_agent_memory'],'reviewer':['analyze_business','recall_agent_memory']}.get(id,[])), 'unrestricted_tools':id=='supervisor', 'output_tokens': max(64,min(1500,int(os.getenv('EVOLVYN_AGENT_OUTPUT_TOKENS','700')))), 'builtin': True} for id,name in AGENTS.items()]
+        agents=builtin+self.listing(owner,'agent_definition')
+        routes=self.vault.effective_routes(owner,[row['agent'] for row in agents])
+        return [{**row,'route':routes.get(row['agent']) or {'provider':'local','agent':'default','model':''}} for row in agents]
     def definition(self, owner, id):
         row = next((row for row in self.catalog(owner) if row['agent']==id),None)
         if not row: raise HTTPException(422,'Unknown agent')
@@ -75,19 +77,26 @@ class AgentGateway:
                 async with httpx.AsyncClient(timeout=80 if selected=='local' else 30,trust_env=selected!='local') as client:
                     for attempt in range(2):
                         try:
-                            response=await client.post(config['url'],headers=headers,json={'model':model_for(selected,config),'messages':messages,'max_tokens':min(384,definition['output_tokens']),'temperature':0.1})
-                            response.raise_for_status(); break
+                            if selected=='gemini':
+                                from backend.gemini_gateway import completion
+                                payload=await completion(messages,model_for(selected,config),key,min(384 if selected=='local' else 512,definition['output_tokens']))
+                            else:
+                                response=await client.post(config['url'],headers=headers,json={'model':model_for(selected,config),'messages':messages,'max_tokens':min(384 if selected=='local' else 512,definition['output_tokens']),'temperature':0.1})
+                                response.raise_for_status();payload=response.json()
+                            break
                         except (httpx.TransportError,httpx.HTTPStatusError) as error:
                             transient=not isinstance(error,httpx.HTTPStatusError) or error.response.status_code in (429,500,502,503,504)
                             if attempt or not transient: raise
                             await asyncio.sleep(.3)
-                payload=response.json();text=payload['choices'][0]['message']['content']
+                text=payload['choices'][0]['message']['content']
                 if not isinstance(text,str) or not text.strip() or len(text)>12000: raise ValueError('Invalid output')
                 reject_secrets(text)
                 if key and key in text: raise ValueError('Credential reflection')
-                return {'text':text,'mode':selected,'fallback':False,'classification':'Model-generated proposal; review required','usage':{k:v for k,v in (payload.get('usage') or {}).items() if k in ('prompt_tokens','completion_tokens','total_tokens') and isinstance(v,int) and v>=0},'memory_ids':[m['id'] for m in memory],'model':model_for(selected,config),'reserved_output_tokens':2*min(384,definition['output_tokens'])}
-            except Exception:
-                if not allow_fallback: raise HTTPException(502,'Agent provider or output guardrail failed; no raw provider error retained')
+                return {'text':text,'mode':selected,'fallback':False,'classification':'Model-generated proposal; review required','usage':{k:v for k,v in (payload.get('usage') or {}).items() if k in ('prompt_tokens','completion_tokens','total_tokens') and isinstance(v,int) and v>=0},'memory_ids':[m['id'] for m in memory],'model':model_for(selected,config),'reserved_output_tokens':2*min(384 if selected=='local' else 512,definition['output_tokens'])}
+            except Exception as error:
+                if not allow_fallback:
+                    from backend.model_errors import failure,ModelFailure
+                    code,message=failure(error);raise ModelFailure(code,message) from None
                 output=self.deterministic(agent,report,goal)
                 output['classification']='Labeled deterministic fallback — provider unavailable or output rejected'
                 return output
@@ -110,4 +119,7 @@ def install(app,auth,service):
         try:
             result=await service.respond(owner,agent,{}, {'facts':[],'evidence':[]},'Reply with a short greeting.',{},'default',False)
             return {'available':True,'mode':result['mode'],'model':result.get('model'),'usage':result.get('usage'),'classification':result['classification']}
-        except HTTPException:return {'available':False,'reason':'Provider connection, credential, data policy or output guardrail check failed'}
+        except Exception as error:
+            from backend.model_errors import failure
+            code,message=failure(error)
+            return {'available':False,'error_code':code,'reason':message}

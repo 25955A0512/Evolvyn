@@ -776,3 +776,17 @@
 .product-phase small { font-size: 12px; }
 .architecture-diagram svg { min-width: 650px; }
 .product-source-code pre { font-size: 12px; }
+.oauth-providers .oauth-provider { display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap; padding:12px; }
+.oauth-provider small { font-size:12px; }
+.oauth-setup,.authorized-connections,.workspace-model-default { background:var(--surface,#fff); border:1px solid var(--line,#dce4d8); border-radius:14px; padding:22px; margin:20px 0; font-size:14px; line-height:1.7; min-width:0; }
+.oauth-setup code {display:block;overflow-wrap:anywhere;padding:10px;background:var(--bg,#f5f6f2);}
+.oauth-setup pre {white-space:pre-wrap;overflow-wrap:anywhere;}
+.oauth-setup li { margin:8px 0; }
+.authorized-connector {display:flex;gap:18px;align-items:start;}
+.authorized-connector h3 {margin-top:0;}
+.authorized-connector-actions,.default-key-choice {display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-block:15px;}
+.default-key-choice {justify-content:space-between;}
+.product-deliverable-tabs {flex-wrap:wrap;overflow:visible;}
+.intelligent-product-studio .product-workbench-grid {grid-template-columns:minmax(290px,.78fr) minmax(0,1.22fr);}
+@media(max-width:1050px){.intelligent-product-studio .product-workbench-grid {grid-template-columns:1fr;} .product-conversation{max-height:none;}}
+.prd-editor { width:100%;min-height:420px;resize:vertical;padding:18px;font:15px/1.7 monospace; }

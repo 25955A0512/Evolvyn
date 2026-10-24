@@ -1,3 +1,4 @@
+import { AuthorizedConnections } from "./AuthorizedConnections";
 import { ConnectorArt, ConnectorGallery } from "./ConnectorGallery";
 import { UiIcon } from "./UiIcon";
 import { useEffect, useState } from "react";
@@ -85,6 +86,9 @@ function VaultPanel({ api }: { api: API }) {
       )}
       {data && (
         <>
+          <section className="workspace-model-default"><h3>Use one saved key across all agents</h3><p>A single unassigned Gemini key becomes the workspace default automatically. Explicit per-agent routes remain in force until you choose “Use for all agents”.</p>
+          {data.credentials.filter((c:any)=>c.enabled&&c.provider!=="mcp").map((c:any)=><div className="default-key-choice" key={c.id}><strong>{c.name} · {c.provider}</strong><button disabled={busy} onClick={()=>action(async()=>{await api.json('/vault/workspace-default',{method:'PUT',body:JSON.stringify({provider:c.provider,credential_id:c.id,reset_agent_overrides:true})});},'Workspace default saved. All agents now inherit this key.')}>Use for all agents</button></div>)}
+          <details><summary>Effective route for every agent</summary>{Object.entries(data.effective_routes||{}).map(([agent,route]:[string,any])=><p key={agent}>{data.agents[agent]}: {route.provider}{route.inferred?' · saved key selected automatically':''}</p>)}</details></section>
           <div className="vault-security">
             <Shield size={20} />
             <div>
@@ -1140,9 +1144,11 @@ export function AgentWorkspace({
   onRefresh,
   onManage,
   onNavigate,
+  onTabChange,
 }: {
   api: API;
   initialTab: StudioTab;
+  onTabChange?: (tab:StudioTab)=>void;
   initialAgent?: string;
   onSettings?: () => void;
   onNavigate?: (id: string) => void;
@@ -1153,8 +1159,9 @@ export function AgentWorkspace({
   onRefresh: () => void;
   onManage: ManageConnections;
 }) {
-  const [tab, setTab] = useState<StudioTab>(initialTab);
-  useEffect(() => setTab(initialTab), [initialTab]);
+  const [tab, setTabState] = useState<StudioTab>(initialTab);
+  function setTab(value:StudioTab){setTabState(value);onTabChange?.(value);}
+  useEffect(() => setTabState(initialTab), [initialTab]);
   const tabs = [
     { id: "build", name: "Build a product", icon: Code2 },
     { id: "growth", name: "Growth insights", icon: Brain },
@@ -1296,7 +1303,7 @@ export function AgentWorkspace({
           )}{" "}
           {tab === "vault" && <VaultPanel api={api} />}{" "}
           {tab === "integrations" && (
-            <Integrations api={api} onManage={onManage} />
+            <><AuthorizedConnections api={api} /><Integrations api={api} onManage={onManage} /></>
           )}
         </div>
       </main>

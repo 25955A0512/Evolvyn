@@ -1,4 +1,5 @@
 """Actual LangGraph specialist handoffs, bounded critique loops and durable node replay."""
+from backend.mcp_registry import is_external
 import asyncio
 import json
 import re
@@ -23,7 +24,7 @@ class DiscussInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     conversation_id:str
     growth_report_id:str|None=None
-    goal:str=Field(min_length=5,max_length=2000)
+    goal:str=Field(min_length=1,max_length=2000)
     mode:Literal['default','evidence','local','provider','groq','gemini','openrouter']='default'
     allow_fallback:bool=False
     max_rounds:int=Field(default=2,ge=1,le=3)
@@ -71,9 +72,12 @@ class Discussion:
             remaining=min(body.max_seconds,settings['max_run_seconds'])-run.get('elapsed_seconds',0)
             async with asyncio.timeout(max(.001,remaining)):
                 if 'report' not in cp:
-                    cp['tool_calls']+=1;checkpoint()
-                    if cp['tool_calls']>settings['max_tool_calls']:raise ValueError('Tool budget exhausted')
-                    cp['report']=await s['TOOL_PLUGINS'].invoke(owner,'analyze_business',{'conversation_id':conversation['id'],'query':body.goal},ToolContext(owner))
+                    if conversation.get('files'):
+                        cp['tool_calls']+=1;checkpoint()
+                        if cp['tool_calls']>settings['max_tool_calls']:raise ValueError('Tool budget exhausted')
+                        cp['report']=await s['TOOL_PLUGINS'].invoke(owner,'analyze_business',{'conversation_id':conversation['id'],'query':body.goal},ToolContext(owner))
+                    else:
+                        cp['report']={'facts':[],'evidence':[]};cp['no_internal_evidence']=True
                     checkpoint()
                 report=cp['report']
                 if body.growth_report_id and not cp.get('growth_attached'):
@@ -85,7 +89,7 @@ class Discussion:
                     marker='context_'+str(index)
                     if marker in cp:continue
                     spec=s['TOOL_PLUGINS'].validate(owner,call.name,call.arguments)
-                    if spec['adapter']=='mcp' and s['TOOL_PLUGINS'].mcp.server(owner,spec['server_id'])['transport']=='streamable_http':s['POLICY'].data(owner,conversation,'mcp')
+                    if spec['adapter']=='mcp' and is_external(s['TOOL_PLUGINS'].mcp.server(owner,spec['server_id'])):s['POLICY'].data(owner,conversation,'mcp')
                     if spec['risk']!='read':raise HTTPException(403,'Discussion context accepts read-only tools')
                     if cp['tool_calls']>=settings['max_tool_calls']:raise ValueError('Tool budget exhausted')
                     cp['tool_calls']+=1;checkpoint()
@@ -100,7 +104,7 @@ class Discussion:
                         with model_scope(owner,agent):
                             selected=effective_mode(body.mode)
                             s['POLICY'].data(owner,conversation,selected)
-                        reserve=0 if selected=='evidence' else 768
+                        reserve=0 if selected=='evidence' else 2*min(384 if selected=='local' else 512,self.agents.definition(owner,agent)['output_tokens'])
                         if cp['reserved_output_tokens']+reserve>body.max_output_tokens:raise ValueError('Output token budget exhausted')
                         cp['reserved_output_tokens']+=reserve
                         cp['events'].append({'stage':agent,'detail':'Running specialist handoff','round':round});checkpoint()
@@ -119,16 +123,17 @@ class Discussion:
                     result=await graph.compile().ainvoke({'outputs':{},'round':0,'issues':[]},{'recursion_limit':16})
                 output='\n\n'.join('### '+agent.replace('_',' ').title()+'\n'+result['outputs'][agent]['text'] for agent in result['outputs'])
                 cp['events'].append({'stage':'approval','detail':'Specialists finished; human review required before saving a decision'})
-                checkpoint(state='WAITING_FOR_APPROVAL',output=output,discussion_result=result,report=report,elapsed_seconds=run.get('elapsed_seconds',0)+time.monotonic()-started)
+                checkpoint(state='WAITING_FOR_APPROVAL',output=output,discussion_result=result,report=None if cp.get('no_internal_evidence') else report,elapsed_seconds=run.get('elapsed_seconds',0)+time.monotonic()-started)
                 s['finish_message'](owner,conversation['id'],id,output)
         except asyncio.CancelledError:
             if s['stopping']():checkpoint(state='CREATED',worker=None,lease_until=None,elapsed_seconds=run.get('elapsed_seconds',0)+time.monotonic()-started)
             else:s['change_execution'](owner,id,{'state':'CANCELLED'})
             raise
         except Exception as error:
-            reason='Discussion stopped by policy, unavailable evidence, provider validation or execution budget'
+            from backend.model_errors import failure
+            code,reason=failure(error)
             if isinstance(error,ValueError) and str(error) in ('Tool budget exhausted','Output token budget exhausted'):reason=str(error)
-            s['change_execution'](owner,id,{'state':'FAILED','error':reason,'discussion_checkpoint':cp,'events':cp['events']})
+            s['change_execution'](owner,id,{'state':'FAILED','error':reason,'error_code':code,'discussion_checkpoint':cp,'events':cp['events']})
             s['finish_message'](owner,run['conversation'],id,reason)
         finally:
             heartbeat.cancel();await asyncio.gather(heartbeat,return_exceptions=True)
@@ -141,13 +146,13 @@ def install(app,auth,harness):
     def listing(owner=Depends(auth)):return [row for row in s['listing'](owner,'execution') if row.get('engine')=='langgraph_discussion']
     @app.post('/api/discussions',status_code=202)
     async def start(body:DiscussInput,owner=Depends(auth)):
-        conversation=s['get'](owner,body.conversation_id,'conversation');s['POLICY'].require(owner,'write');reject_secrets(body.goal)
+        conversation=s['get'](owner,body.conversation_id,'conversation');s['POLICY'].require(owner,'discuss');reject_secrets(body.goal)
         if body.growth_report_id and s['get'](owner,body.growth_report_id,'growth_report')['conversation']!=body.conversation_id:raise HTTPException(422,'Growth report must belong to this conversation')
         for agent in ('business_analyst','marketing_analyst','product_manager','reviewer'):
             with model_scope(owner,agent):s['POLICY'].data(owner,conversation,effective_mode(body.mode))
         for call in body.context_tools:
             spec=s['TOOL_PLUGINS'].validate(owner,call.name,call.arguments)
-            if spec['adapter']=='mcp' and s['TOOL_PLUGINS'].mcp.server(owner,spec['server_id'])['transport']=='streamable_http':s['POLICY'].data(owner,conversation,'mcp')
+            if spec['adapter']=='mcp' and is_external(s['TOOL_PLUGINS'].mcp.server(owner,spec['server_id'])):s['POLICY'].data(owner,conversation,'mcp')
             if spec['risk']!='read':raise HTTPException(422,'Only read-only evidence tools are supported')
         id=str(uuid4());data={'engine':'langgraph_discussion','state':'CREATED','question':body.goal,'mode':body.mode,'conversation':body.conversation_id,'actor':s['POLICY'].principal(owner).account,'events':[],'discussion_input':body.model_dump(),'output':'','graph':{'nodes':['business_analyst','marketing_analyst','product_manager','reviewer'],'edges':[['business_analyst','marketing_analyst'],['marketing_analyst','product_manager'],['product_manager','reviewer'],['reviewer','product_manager']],'max_rounds':body.max_rounds}}
         with s['conn']() as c:

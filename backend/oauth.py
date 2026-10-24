@@ -76,10 +76,11 @@ def install(app,conn,auth):
     def providers():
         rows=[]
         for provider,base in PROVIDERS.items():
+            settings=None
             try:
                 settings=configuration(provider);enabled=bool(settings['client_id'] and settings['client_secret'])
             except HTTPException:enabled=False
-            rows.append({'id':provider,'name':base['name'],'enabled':enabled,'start_url':'/api/auth/oauth/'+provider+'/start'})
+            rows.append({'id':provider,'name':base['name'],'enabled':enabled,'start_url':'/api/auth/oauth/'+provider+'/start','setup':{'callback_url':settings['redirect_uri'] if settings else '', 'client_id_env':'OAUTH_'+provider.upper()+'_CLIENT_ID','client_secret_env':'OAUTH_'+provider.upper()+'_CLIENT_SECRET','console_url':'https://console.cloud.google.com/auth/clients' if provider=='google' else 'https://github.com/settings/developers','instructions':['Create a web OAuth application in the provider console.','Register this exact callback URL. For Google, add your email as a test user while the consent screen is in testing.','Save the client ID and secret in ignored .local/deploy.env on the machine running Evolvyn. Never paste secrets into chat or source control.','Recreate the API container with docker compose --env-file .local/deploy.env up -d --force-recreate api, then refresh this page.']}})
         return rows
     @app.get('/api/auth/oauth/{provider}/start')
     def start(provider:str):return begin(provider)
@@ -97,13 +98,17 @@ def install(app,conn,auth):
     async def callback(provider:str,request:Request,state:str='',code:str=''):
         settings=configuration(provider)
         if not state or len(state)>200 or not code or len(code)>4096:raise HTTPException(400,'Authorization was cancelled or invalid')
+        if state.startswith('cx_'):
+            service=getattr(app.state,'connector_oauth',None)
+            if not service:raise HTTPException(400,'Connector authorization is unavailable')
+            return await service.callback(provider,request,state,code)
         with conn() as c:
             row=c.execute('DELETE FROM oauth_states WHERE digest=%s AND provider=%s AND expires>now() RETURNING *',(digest(state),provider)).fetchone()
         if not row or not secrets.compare_digest(row['browser_digest'],digest(request.cookies.get(oauth_cookie_name(),''))):raise HTTPException(400,'Sign-in state expired, consumed or belongs to another browser')
         try:subject,email,name=await verified_profile(provider,settings,code,row['verifier'])
         except Exception:raise HTTPException(401,'Provider identity could not be verified; no session created')
         import psycopg
-        response=RedirectResponse('/',status_code=303);response.delete_cookie(oauth_cookie_name(),path='/api/auth/oauth');response.headers['Cache-Control']='no-store'
+        response=RedirectResponse('/auth/callback',status_code=303);response.delete_cookie(oauth_cookie_name(),path='/api/auth/oauth');response.headers['Cache-Control']='no-store'
         try:
             with conn() as c:
                 # Serialize subject linking and never auto-link by email.

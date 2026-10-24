@@ -51,7 +51,7 @@ with sync_playwright() as p:
     archive=out/'browser-generated-product.zip';download.value.save_as(archive)
     assert 'backend/app.py' in zipfile.ZipFile(archive).namelist()
     page.reload()
-    page.get_by_role('button',name='Build a product',exact=True).click()
+    page.locator('.agent-workspace').wait_for()
     studio=page.locator('.agent-workspace')
     studio.get_by_role('button',name='Guided form · no model',exact=True).click()
     studio.get_by_label('Saved product',exact=True).select_option(product['id'])

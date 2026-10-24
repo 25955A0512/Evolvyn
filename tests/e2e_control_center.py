@@ -86,7 +86,7 @@ with sync_playwright() as p:
     page.locator('.control-main').evaluate('(node) => { node.scrollTop=0; }')
     page.screenshot(path=str(out/'governance-preview.png'))
     page.reload()
-    page.get_by_role('button',name=re.compile('^Agent control center')).click()
+    page.locator('.control-overlay').wait_for()
     expect(page.locator('.server-card')).to_have_count(2)
     page.set_viewport_size({'width':390,'height':844})
     page.screenshot(path=str(out/'control-center-mobile.png'))

@@ -92,6 +92,7 @@ SERVICES='''  agents_db:
       OAUTH_GITHUB_CLIENT_SECRET: ${AGENT_OAUTH_GITHUB_CLIENT_SECRET:-}
       APP_ENV: production
       EVOLVYN_COMPILER_URL: http://agents_compiler:8070
+      EVOLVYN_AGENT_OUTPUT_TOKENS: ${AGENT_OUTPUT_TOKENS:-700}
       EVOLVYN_COMPILER_TOKEN: ${AGENT_COMPILER_TOKEN:?Run python scripts/prepare_product.py}
       DATABASE_URL: postgresql://evolvyn:${AGENT_POSTGRES_PASSWORD}@agents_db:5432/evolvyn
       EVOLVYN_ACCESS_TOKEN: ${AGENT_ACCESS_TOKEN:?Run python scripts/prepare_product.py}

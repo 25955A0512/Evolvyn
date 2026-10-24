@@ -1,4 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { Component, Suspense, lazy, useEffect, useRef, useState } from "react";
+import { BrowserRouter, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { studioRoutes, panelRoutes, validRoutes, pathForStudio, pathForPanel } from "./feature-routes";
+import { OAuthReturn } from "./components/OAuthReturn";
+import { AuditLogs } from "./components/AuditLogs";
 import { createRoot } from "react-dom/client";
 import {
   ArrowUp,
@@ -35,9 +39,10 @@ import { ExecutionView } from "./components/ExecutionView";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AccountAccess } from "./components/AccountAccess";
-import { AgentWorkspace, type StudioTab } from "./components/AgentWorkspace";
-import { AgentControlCenter } from "./components/AgentControlCenter";
-import { PlatformPanel } from "./components/PlatformPanel";
+import type { StudioTab } from "./components/AgentWorkspace";
+const AgentWorkspace=lazy(()=>import("./components/AgentWorkspace").then(m=>({default:m.AgentWorkspace})));
+const AgentControlCenter=lazy(()=>import("./components/AgentControlCenter").then(m=>({default:m.AgentControlCenter})));
+const PlatformPanel=lazy(()=>import("./components/PlatformPanel").then(m=>({default:m.PlatformPanel})));
 import "@fontsource/dm-sans/400.css";
 import "@fontsource/dm-sans/500.css";
 import "@fontsource/dm-sans/700.css";
@@ -49,6 +54,7 @@ import "./workspace-refresh.css";
 import "./reference-interactions.css";
 import "./product-workbench.css";
 function App() {
+  const route=useLocation(),navigate=useNavigate();
   const [token, setToken] = useState(
     sessionStorage.getItem("evolvyn-token") || "",
   );
@@ -84,7 +90,8 @@ function App() {
     plan: string;
     outcome: string;
   } | null>(null);
-  const [controlCenter, setControlCenter] = useState(false);
+  const [controlCenter, setControlState] = useState(false);
+  function setControlCenter(open:boolean){setControlState(open);navigate(open?"/mcp-registry":"/dashboard");}
   const [controlServerName, setControlServerName] = useState<
     string | undefined
   >();
@@ -101,8 +108,9 @@ function App() {
     setControlServerName(serverName);
     setControlCenter(true);
   }
-  const [studio, setStudio] = useState<StudioTab | null>(null);
-  const [panel, setPanel] = useState<
+  const [studio, setStudioState] = useState<StudioTab | null>(studioRoutes[location.pathname]||null);
+  function setStudio(tab:StudioTab|null){setStudioState(tab);navigate(pathForStudio(tab));}
+  const [panel, setPanelState] = useState<
     | "tasks"
     | "reports"
     | "automation"
@@ -111,6 +119,8 @@ function App() {
     | "account"
     | null
   >(null);
+  function setPanel(value:typeof panel){setPanelState(value);navigate(pathForPanel(value));}
+  useEffect(()=>{setStudioState(studioRoutes[route.pathname]||null);setPanelState(panelRoutes[route.pathname]||null);setControlState(route.pathname==='/mcp-registry');},[route.pathname]);
   const [project, setProject] = useState("");
   const [projects, setProjects] = useState<
     { id: string; name: string; goal: string }[]
@@ -280,6 +290,7 @@ function App() {
   }, [latestRun?.id, latestRun?.state]);
   async function create() {
     const b = businesses.find((b) => b.id === business);
+
     const c = await api.json("/conversations", {
       method: "POST",
       body: JSON.stringify({
@@ -409,7 +420,7 @@ function App() {
     }
   }
   useEffect(() => {
-    if (!token)
+  if (!token)
       client("cookie")
         .json("/auth/me")
         .then((me) => {
@@ -420,6 +431,7 @@ function App() {
         })
         .catch(() => {});
   }, []);
+  useEffect(()=>{if(token&&['/login','/signup','/auth/callback'].includes(route.pathname))navigate('/dashboard',{replace:true});},[token,route.pathname]);
   function historyGroup(date?: string) {
     if (!date) return "Earlier";
     const day = (d: Date) =>
@@ -436,6 +448,7 @@ function App() {
       ? active
       : null;
   const b = businesses.find((b) => b.id === business);
+
   if (!token)
     return (
       <div className="login">
@@ -1235,6 +1248,7 @@ function App() {
           key={organization}
           api={api}
           initialTab={studio}
+          onTabChange={setStudio}
           initialAgent={selectedCapability}
           onSettings={() => setPreferencesTab("general")}
           onNavigate={(id) => {
@@ -1267,6 +1281,7 @@ function App() {
           onAgents={() => setStudio("agents")}
         />
       )}
+      {route.pathname==="/audit-logs" && <AuditLogs api={api} onClose={()=>navigate("/dashboard")} />}
       {controlCenter && (
         <AgentControlCenter
           initialTab={controlTab}
@@ -1282,6 +1297,7 @@ function App() {
       {panel && (
         <PlatformPanel
           view={panel}
+          onTabChange={setPanel}
           api={api}
           businessId={business}
           conversation={current}
@@ -1378,4 +1394,14 @@ function App() {
     </div>
   );
 }
-createRoot(document.getElementById("root")!).render(<App />);
+function WorkspaceRoute(){
+ const current=useLocation(),navigate=useNavigate();
+ if(!validRoutes.has(current.pathname))return <main className="login"><h1>Page not found</h1><button onClick={()=>navigate('/dashboard')}>Return to workspace</button></main>;
+ return <App/>;
+}
+class FeatureBoundary extends Component<{children:React.ReactNode},{failed:boolean}> {
+ state={failed:false};
+ static getDerivedStateFromError(){return {failed:true};}
+ render(){return this.state.failed?<main className="login"><h1>This view could not load</h1><p>Your saved work remains on the server.</p><button onClick={()=>location.reload()}>Reload workspace</button></main>:this.props.children;}
+}
+createRoot(document.getElementById("root")!).render(<BrowserRouter><FeatureBoundary><Suspense fallback={<main role="status" className="login">Loading workspace…</main>}><Routes><Route path="/auth/callback" element={<OAuthReturn/>}/><Route path="*" element={<WorkspaceRoute/>}/></Routes></Suspense></FeatureBoundary></BrowserRouter>);

@@ -57,9 +57,13 @@ async def propose(report,question,mode):
     if credential and credential in serialized:raise ValueError('Credential found in model input')
     headers={'Authorization':'Bearer '+credential} if credential else {}
     async with httpx.AsyncClient(timeout=60 if mode=='local' else 20,trust_env=mode!='local') as client:
-        response=await client.post(config['url'],headers=headers,json={'model':model_for(mode,config),'messages':messages,'max_tokens':1200,'response_format':response_format,**({'temperature':0.2} if mode=='local' else {})})
-        response.raise_for_status()
-        parsed=Strategy.model_validate_json(response.json()['choices'][0]['message']['content'])
+        if mode=='gemini':
+            from backend.gemini_gateway import completion
+            result=await completion(messages,model_for(mode,config),credential,1200,True)
+        else:
+            response=await client.post(config['url'],headers=headers,json={'model':model_for(mode,config),'messages':messages,'max_tokens':1200,'response_format':response_format,**({'temperature':0.2} if mode=='local' else {})})
+            response.raise_for_status();result=response.json()
+        parsed=Strategy.model_validate_json(result['choices'][0]['message']['content'])
     proposals=[]
     for proposal in parsed.recommendations:
         if not set(proposal.evidence)<=allowed:raise ValueError('Strategy returned unsupported citations')

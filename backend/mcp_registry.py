@@ -21,12 +21,13 @@ from typing import Literal
 
 def credential_prefix(owner):return 'EVOLVYN_MCP_'+hashlib.sha256(owner.encode()).hexdigest()[:12].upper()+'_'
 
-PROFILES={'business_strategy':'backend.mcp_server','evidence_utilities':'backend.mcp_utilities'}
+PROFILES={'business_strategy':'backend.mcp_server','evidence_utilities':'backend.mcp_utilities','github':'backend.github_mcp'}
+def is_external(server):return server['transport']=='streamable_http' or server.get('profile')=='github'
 class ServerInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     name:str=Field(min_length=1,max_length=100)
     transport:Literal['stdio','streamable_http']='stdio'
-    profile:Literal['business_strategy','evidence_utilities']|None='business_strategy'
+    profile:Literal['business_strategy','evidence_utilities','github']|None='business_strategy'
     url:str|None=Field(default=None,max_length=1000)
     auth_env:str|None=Field(default=None,pattern=r'^EVOLVYN_MCP_[A-Z0-9_]+$',max_length=100)
     credential_id:str|None=Field(default=None,max_length=100)
@@ -89,6 +90,11 @@ class MCPRegistry:
         async with asyncio.timeout(row['timeout_seconds']):
             if row['transport']=='stdio':
                 env={'PATH':os.defpath,'PYTHONPATH':str(Path(__file__).resolve().parents[1])}
+                if row.get('profile')=='github':
+                    if not self.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'Organization policy forbids GitHub processing')
+                    if not row.get('credential_id'):raise HTTPException(409,'Authorize GitHub first')
+                    env['EVOLVYN_GITHUB_TOKEN']=self.vault.reveal_for_service(owner,row['credential_id'],'mcp')
+                    env.update({key:os.environ[key] for key in ('HTTP_PROXY','HTTPS_PROXY','NO_PROXY','SSL_CERT_FILE') if os.getenv(key)})
                 parameters=StdioServerParameters(command=sys.executable,args=['-m',PROFILES[row['profile']]],env=env)
                 async with stdio_client(parameters) as (read,write):
                     async with ClientSession(read,write) as session:

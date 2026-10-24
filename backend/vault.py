@@ -31,6 +31,9 @@ class BindingInput(BaseModel):
     provider: Literal['local', 'evidence', 'provider', 'groq', 'gemini', 'openrouter'] = 'local'
     model: str = Field(default='', max_length=150, pattern=r'^[A-Za-z0-9_.:/@-]*$')
 
+class WorkspaceDefault(BindingInput):
+    reset_agent_overrides:bool=False
+
 class Vault:
     def __init__(self, conn, policy): self.conn, self.policy = conn, policy
 
@@ -89,11 +92,27 @@ class Vault:
     def bindings(self, owner):
         return [{'id': row['id'], **row['body']} for row in self.rows(owner, 'model_binding')]
 
-    def route(self, owner, agent):
+    def effective_routes(self,owner,agents):
         rows = self.bindings(owner)
-        return next((row for row in rows if row['agent'] == agent), next((row for row in rows if row['agent'] == 'default'), None))
+        default=next((row for row in rows if row['agent']=='default'),None)
+        # A single saved Gemini key is useful immediately, while explicit local,
+        # evidence or per-agent choices remain authoritative. Never cross tenants.
+        if not default:
+            keys=[r for r in self.rows(owner,'vault_secret') if r['body']['enabled'] and r['body']['provider']=='gemini']
+            if len(keys)==1:default={'agent':'default','provider':'gemini','credential_id':keys[0]['id'],'model':'','inferred':True}
+        by_agent={r['agent']:r for r in rows}
+        return {agent:by_agent.get(agent,default) for agent in agents}
 
-    def bind(self, owner, agent, body):
+    def route(self,owner,agent):return self.effective_routes(owner,[agent])[agent]
+
+    def credential_for(self,owner,provider):
+        default=next((r for r in self.bindings(owner) if r['agent']=='default' and r['provider']==provider and r.get('credential_id')),None)
+        if default:return default['credential_id']
+        keys=[r for r in self.rows(owner,'vault_secret') if r['body']['enabled'] and r['body']['provider']==provider]
+        if len(keys)>1:raise HTTPException(409,'Several keys match this provider; choose a default credential in Key vault')
+        return keys[0]['id'] if keys else None
+
+    def bind(self, owner, agent, body,reset_overrides=False):
         self.policy.require(owner, 'manage_vault')
         from backend.agent_memory import reject_secrets
         reject_secrets(body.model)
@@ -104,6 +123,7 @@ class Vault:
         id = 'model-binding:' + owner + ':' + agent
         with self.conn() as c:
             c.execute("INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,'model_binding',%s) ON CONFLICT(id) DO UPDATE SET body=EXCLUDED.body WHERE records.owner=EXCLUDED.owner", (id, owner, json.dumps(data)))
+            if reset_overrides:c.execute("DELETE FROM records WHERE owner=%s AND kind='model_binding' AND body->>'agent'!='default'",(owner,))
         return {'id': id, **data}
 
 def install(app, auth, vault):
@@ -112,7 +132,17 @@ def install(app, auth, vault):
         entries = vault.list(owner)
         try: vault.cipher(); ready = True
         except HTTPException: ready = False
-        return {'credentials': entries, 'bindings': vault.bindings(owner), 'agents': {**AGENTS,**{row['body']['agent']:row['body']['name'] for row in vault.rows(owner,'agent_definition')}}, 'ready': ready, 'encryption': 'Fernet authenticated encryption; master key outside PostgreSQL'}
+        agents={**AGENTS,**{row['body']['agent']:row['body']['name'] for row in vault.rows(owner,'agent_definition')}}
+        return {'credentials': entries, 'bindings': vault.bindings(owner), 'agents': agents,'effective_routes':{agent:route or {'provider':'local','agent':agent} for agent,route in vault.effective_routes(owner,agents).items()}, 'ready': ready, 'encryption': 'Fernet authenticated encryption; master key outside PostgreSQL'}
+
+    @app.put('/api/vault/workspace-default')
+    def workspace_default(body:WorkspaceDefault,owner=Depends(auth)):
+        vault.policy.require(owner,'manage_vault')
+        if 'model' not in body.model_fields_set:
+            prior=next((r for r in vault.bindings(owner) if r['agent']=='default' and r['provider']==body.provider and r.get('credential_id')==body.credential_id),None)
+            if prior:body=body.model_copy(update={'model':prior.get('model','')})
+        result=vault.bind(owner,'default',BindingInput(**body.model_dump(exclude={'reset_agent_overrides'})),body.reset_agent_overrides)
+        return result
 
     @app.post('/api/vault/credentials')
     def create(body: CredentialInput, owner=Depends(auth)): return vault.put(owner, body)

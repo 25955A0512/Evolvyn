@@ -34,8 +34,10 @@ class AssistantChat:
             if s['stopping']():s['change_execution'](owner,id,{'state':'CREATED','worker':None,'lease_until':None})
             else:s['change_execution'](owner,id,{'state':'CANCELLED'})
             raise
-        except Exception:
-            error='A model reply could not be generated. Configure a valid agent route in Key vault, configure private platform-help credentials, or start the local model. Evidence only cannot answer conversational messages. No action executed.'
-            if s['change_execution'](owner,id,{'state':'FAILED','error':error,'events':events+[{'stage':'failed','detail':error}]}):s['finish_message'](owner,run['conversation'],id,error)
+        except Exception as caught:
+            from backend.model_errors import failure
+            code,error=failure(caught)
+            error+=' Check Key vault. No action executed.'
+            if s['change_execution'](owner,id,{'state':'FAILED','error_code':code,'error':error,'events':events+[{'stage':'failed','detail':error}]}):s['finish_message'](owner,run['conversation'],id,error)
         finally:
             heartbeat.cancel();await asyncio.gather(heartbeat,return_exceptions=True);WORKER.reset(worker)

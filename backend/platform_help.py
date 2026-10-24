@@ -46,9 +46,23 @@ async def answer(question,history):
             attempts.append({'provider':provider,'status':'unavailable_or_rejected'})
     raise HTTPException(503,{'message':'Platform help is unavailable. Configure private Gemini/Groq support credentials and model IDs, or check provider access/quota. No AI answer was generated.','attempts':attempts})
 
+async def workspace_answer(owner,question,history):
+    from backend.model_access import model_scope,model_data_scope,binding
+    from backend.providers import response_chunks
+    with model_scope(owner,'supervisor'),model_data_scope({}):
+        route=binding()
+        if not route or not route.get('credential_id'):raise HTTPException(503,'Save a workspace model key in Key vault or configure platform support credentials.')
+        report={'facts':[],'evidence':[{'source':'Evolvyn product reference','citation':'Evolvyn platform help','excerpt':json.dumps(REFERENCE)}],'_output_limit':700}
+        text=''
+        async for part in response_chunks(report,'Answer this platform question naturally using the product reference: '+question,[{'role':m['role'],'text':m['content']} for m in history],'default'):text+=part
+        return {'text':text,'provider':route['provider'],'model':report.get('usage',{}).get('model'),'fallback':False,'attempts':[{'provider':route['provider'],'status':'succeeded','credential_scope':'workspace default'}],'usage':report.get('usage',{})}
+
 def install(app,auth,get,save,listing,policy):
     @app.get('/api/help/status')
-    def status(owner=Depends(auth)):return {'routes':routes(),'data_scope':'Platform questions only; service keys never route workspace agents','live_verified':False}
+    def status(owner=Depends(auth)):
+        from backend.model_access import model_scope,binding
+        with model_scope(owner,'supervisor'):route=binding()
+        return {'routes':routes(),'workspace_route':{'provider':route['provider'],'configured':bool(route.get('credential_id'))} if route else None,'data_scope':'Platform questions only. Service keys never route business agents. Saved workspace default is used when service routes are absent.','live_verified':False}
     @app.get('/api/help/threads')
     def threads(owner=Depends(auth)):return listing(owner,'help_thread')
     @app.post('/api/help/ask')
@@ -57,7 +71,11 @@ def install(app,auth,get,save,listing,policy):
         if not policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'Organization policy disables remote support processing')
         reject_secrets(body.question)
         if any(os.getenv(key) and os.getenv(key) in body.question for _,key,_,_ in ROUTES):raise HTTPException(422,'Keep credentials in private configuration, not support messages')
-        if not any(r['configured'] for r in routes()):raise HTTPException(503,'Platform help needs private support credentials and model IDs. No AI answer was generated.')
+        service_configured=any(r['configured'] for r in routes())
+        if not service_configured:
+            from backend.model_access import model_scope,binding
+            with model_scope(owner,'supervisor'):route=binding()
+            if not route or not route.get('credential_id'):raise HTTPException(503,'Platform help needs a saved workspace key or private support credentials. No AI answer was generated.')
         thread=get(owner,body.thread_id,'help_thread') if body.thread_id else save(owner,'help_thread',{'messages':[],'state':'IDLE'})
         with policy.conn() as c:
             row=c.execute("SELECT body FROM records WHERE owner=%s AND id=%s AND kind='help_thread' FOR UPDATE",(owner,thread['id'])).fetchone();data=row['body']
@@ -68,7 +86,7 @@ def install(app,auth,get,save,listing,policy):
             data['messages'].append({'role':'user','text':body.question})
             c.execute('UPDATE records SET body=%s WHERE owner=%s AND id=%s',(json.dumps(data),owner,thread['id']))
         try:
-            async with asyncio.timeout(40):result=await answer(body.question,history)
+            async with asyncio.timeout(45):result=await answer(body.question,history) if service_configured else await workspace_answer(owner,body.question,history)
             data['messages'].append({'role':'assistant',**result});data['state']='COMPLETED';data.pop('error',None)
             return save(owner,'help_thread',data,thread['id'])
         except Exception:

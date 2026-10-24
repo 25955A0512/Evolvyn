@@ -15,7 +15,7 @@ if [ -f .local/models/qwen2.5-1.5b-instruct-q4_k_m.gguf ] && [ -x .local/llama/l
   bash scripts/start_local_model.sh >.local/model.log 2>&1 &
   model_pid=$!
 fi
-.venv/bin/uvicorn backend.app:app --host 127.0.0.1 --port 8000 &
+.venv/bin/uvicorn backend.app:app --no-access-log --host 127.0.0.1 --port 8000 &
 backend_pid=$!
 trap 'kill "$backend_pid" 2>/dev/null || true; if [ -n "$model_pid" ]; then kill "$model_pid" 2>/dev/null || true; fi' EXIT INT TERM
 for attempt in {1..30}; do

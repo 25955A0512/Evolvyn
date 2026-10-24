@@ -1,3 +1,5 @@
+import { useLocation, useNavigate } from "react-router-dom";
+import { OAuthButtons } from "./OAuthSetup";
 import { useEffect, useState } from "react";
 export function AccountAccess({
   onAuthenticated,
@@ -11,7 +13,10 @@ export function AccountAccess({
       .then(setProviders)
       .catch(() => {});
   }, []);
-  const [register, setRegister] = useState(false);
+  const route=useLocation(),navigate=useNavigate();
+  const [register, setRegisterState] = useState(route.pathname==="/signup");
+  function setRegister(value:boolean){setRegisterState(value);navigate(value?"/signup":"/login");}
+  useEffect(()=>{setRegisterState(route.pathname==="/signup");},[route.pathname]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -30,17 +35,7 @@ export function AccountAccess({
           Create account
         </button>
       </div>
-      {providers.some((p) => p.enabled) && (
-        <div className="oauth-providers">
-          {providers
-            .filter((p) => p.enabled)
-            .map((p) => (
-              <a className="oauth-provider" key={p.id} href={p.start_url}>
-                Continue with {p.name}
-              </a>
-            ))}
-        </div>
-      )}
+      <OAuthButtons register={register} />
       <form
         onSubmit={async (e) => {
           e.preventDefault();
@@ -67,6 +62,7 @@ export function AccountAccess({
                   : "Check your email and password; use at least 12 password characters",
               );
             onAuthenticated(body.organization_id);
+            if (["/login","/signup","/auth/callback"].includes(route.pathname)) navigate("/dashboard");
           } catch (e) {
             setError(String(e));
           } finally {

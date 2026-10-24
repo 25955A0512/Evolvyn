@@ -39,6 +39,7 @@ class PolicyEngine:
             # Sample owners can approve only their own fixed internal demonstration action.
             if not (p.role=='demo' and action=='approve'):raise HTTPException(403,'Administrator permission required')
         if action not in ('read',) and p.role=='viewer':raise HTTPException(403,'Viewer access is read-only')
+        if action not in ('read','discuss') and p.role=='discussant':raise HTTPException(403,'Discussion access does not grant editing, execution or approval permissions')
         return p
     def raw(self,owner,id,kind=None):
         with self.conn() as c:
@@ -83,7 +84,7 @@ class PolicyEngine:
         if risk!='read' and not approved:raise HTTPException(409,'Human approval is required for this tool')
         # approved is issued only by the server after an administrator's argument-bound decision.
     def data(self,owner,conversation,mode):
-        self.resource(owner,'write','conversation',conversation)
+        self.resource(owner,'discuss','conversation',conversation)
         if mode not in ('local','evidence'):
             project=self.project_for(owner,'conversation',conversation)
             if not self.settings(owner)['allow_external_processing'] or (project and project.get('data_policy')=='local_only'):

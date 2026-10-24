@@ -1,4 +1,5 @@
 """Explicit read-only connector context shared by chat and the governed tool gateway."""
+from backend.mcp_registry import is_external
 import json
 from datetime import datetime,timezone
 from pydantic import BaseModel,ConfigDict,Field
@@ -16,7 +17,7 @@ def validate(service,owner,conversation,calls):
         spec=service.validate(owner,call.name,call.arguments)
         if spec['risk']!='read':raise HTTPException(422,'Analysis context accepts read-only tools; writes require a separate approved action')
         service.policy.tool(owner,call.name,spec['risk'],spec['permission'],{'workspace.read'})
-        if spec['adapter']=='mcp' and service.mcp.server(owner,spec['server_id'])['transport']=='streamable_http':service.policy.data(owner,conversation,'mcp')
+        if spec['adapter']=='mcp' and is_external(service.mcp.server(owner,spec['server_id'])):service.policy.data(owner,conversation,'mcp')
 
 async def collect(service,owner,conversation,calls,context):
     validate(service,owner,conversation,calls)

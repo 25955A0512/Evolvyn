@@ -1,3 +1,4 @@
+import { ProductDocument } from "./ProductDocument";
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -388,6 +389,7 @@ export function IntelligentProductStudio({
                       <button
                         disabled={
                           busy ||
+                          interview?.definition?.nodes?.find((n:any)=>n.id==='proposal')?.arguments?.revision !== product.revision ||
                           product.proposal_history?.some(
                             (h: any) => h.execution_id === interview.id,
                           )
@@ -635,12 +637,7 @@ export function IntelligentProductStudio({
           )}
           {tab === "prd" && (
             <div className="product-workbench-pane markdown">
-              <h2>Product requirements document</h2>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {blueprint?.prd ||
-                  output(run, "prd")?.text ||
-                  "No PRD has been generated for this run."}
-              </ReactMarkdown>
+              <ProductDocument key={product?.id} api={api} specId={product?.id} generatedText={blueprint?.prd || output(run, "prd")?.text || ""} />
             </div>
           )}
           {tab === "architecture" && (

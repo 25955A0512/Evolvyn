@@ -21,7 +21,7 @@ class LoginInput(BaseModel):
 
 class MembershipInput(BaseModel):
     email:str=Field(min_length=5,max_length=254)
-    role:str=Field(pattern='^(admin|editor|viewer)$')
+    role:str=Field(pattern='^(admin|editor|viewer|discussant)$')
 
 class OrganizationInput(BaseModel):
     name:str=Field(min_length=1,max_length=100)
@@ -70,6 +70,8 @@ def resolve(request,authorization,organization,conn):
         if origin and origin not in allowed:raise HTTPException(403,'Cross-origin request denied')
         personal_preference=request.url.path=='/api/account/preferences' and request.method=='PUT'
         if role=='viewer' and not personal_preference:raise HTTPException(403,'Viewer access is read-only')
+        discussion_request=request.method=='POST' and (request.url.path=='/api/discussions' or bool(re.fullmatch(r'/api/conversations/[^/]+/runs',request.url.path)))
+        if role=='discussant' and not (personal_preference or discussion_request):raise HTTPException(403,'Discussion members can read and ask agents; editing, approvals and administration are restricted')
         if role=='editor' and (request.url.path.endswith('/decision') or '/members' in request.url.path or request.url.path.startswith('/api/organizations')):
             raise HTTPException(403,'An organization administrator must approve this action')
     request.state.identity={'account_id':session['account_id'],'organization_id':org,'role':role}

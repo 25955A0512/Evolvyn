@@ -202,3 +202,9 @@ Latest experience acceptance: **138 tests passed**, including isolated support-p
 Open **Build a product** to discuss requirements with the model, confirm its proposals, enable specialist phases, inspect the PRD/architecture, and approve a source build. **Source tree**, **Prototype**, and **Build results** show different stages explicitly. The existing **Guided form · no model** remains available. Supported source adapters implement private accounts and entity CRUD; requested domain features and integrations remain listed as pending until separately implemented and verified. Builds do not automatically deploy a live application.
 
 The private compiler container validates frontend bundles without executing generated application code. When updating an existing checkout, run `python scripts/prepare_deployment.py` before rebuilding containers so its private authorization token is created. Never replace or delete an existing deployment environment or vault key.
+
+## Sign in, connect GitHub and use your saved Gemini key
+
+Google and GitHub sign-in/sign-up buttons now include administrator setup guidance when OAuth applications are unconfigured. Follow the exact callback/client configuration shown there; save secrets only in ignored `.local/deploy.env`, then recreate the API container. **Integrations → Connect GitHub** authorizes a real read-only public-repository MCP adapter. Other providers need their own authorized endpoint; GitHub does not authorize them.
+
+A single saved, unassigned Gemini key is selected as the workspace default. To replace old local/evidence/per-agent bindings, open **Key vault → Use for all agents** beside that saved key. The existing key stays encrypted; no re-upload is needed. Test a model route before relying on it. Project local-only restrictions remain enforced. See [connected identity and routing](docs/CONNECTED_IDENTITY.md) for setup, verified boundaries, PRD DOCX, permissions and remaining release work.

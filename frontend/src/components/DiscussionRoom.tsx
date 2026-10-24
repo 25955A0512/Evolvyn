@@ -517,7 +517,7 @@ export function DiscussionRoom({
           onChange={(e) => setGoal(e.target.value)}
           placeholder="Ask your team a business or product question…"
           required
-          minLength={5}
+          minLength={1}
           maxLength={2000}
           rows={2}
         />
@@ -532,7 +532,7 @@ export function DiscussionRoom({
           <button
             className="studio-primary"
             aria-label="Start specialist discussion"
-            disabled={busy || running || goal.trim().length < 5}
+            disabled={busy || running || goal.trim().length < 1}
           >
             <ArrowUp size={19} />
             <span>Start specialist discussion</span>

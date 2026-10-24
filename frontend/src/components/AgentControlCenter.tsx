@@ -1,3 +1,4 @@
+import { AuthorizedConnections } from "./AuthorizedConnections";
 import { ConnectorGallery, ConnectorArt } from "./ConnectorGallery";
 import { useEffect, useRef, useState } from "react";
 import { UiIcon } from "./UiIcon";
@@ -301,6 +302,7 @@ export function AgentControlCenter({
                     verify connectivity before use.
                   </p>
                 </div>
+                <AuthorizedConnections api={api} />
                 <ConnectorGallery
                   busy={busy}
                   servers={servers}

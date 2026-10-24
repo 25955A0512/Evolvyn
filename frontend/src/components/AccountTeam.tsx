@@ -78,6 +78,7 @@ export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
                 Access level
                 <select name="role">
                   <option value="viewer">Viewer · read only</option>
+                  <option value="discussant">Discussion · read and ask agents</option>
                   <option value="editor">
                     Editor · analyze and manage tasks
                   </option>

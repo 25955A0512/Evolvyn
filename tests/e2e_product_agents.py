@@ -76,7 +76,7 @@ with sync_playwright() as pw:
     preview.get_by_role('button',name='Add Tasks',exact=True).click()
     expect(preview.locator('.prototype-records')).to_contain_text('Synthetic support request')
     page.reload()
-    page.get_by_role('button',name='Build a product',exact=True).click()
+    page.locator('.agent-workspace').wait_for()
     studio=page.locator('.intelligent-product-studio')
     studio.get_by_label('Agent product',exact=True).select_option(product['id'])
     studio.get_by_role('button',name='Prototype',exact=True).click()

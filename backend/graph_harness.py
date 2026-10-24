@@ -236,7 +236,7 @@ class GraphHarness:
                                 from backend.providers import provider_config
                                 provider_config(selected_mode)
                             role_limit=s['AGENTS'].definition(owner,node.agent_id)['output_tokens'] if s.get('AGENTS') else 700
-                            reserve=0 if selected_mode=='evidence' else min(role_limit,512 if selected_mode=='local' else 700,definition.max_output_tokens-cp['tokens_reserved'])
+                            reserve=0 if selected_mode=='evidence' else min(role_limit,512 if selected_mode=='local' else 1024,definition.max_output_tokens-cp['tokens_reserved'])
                             if selected_mode!='evidence' and reserve<1:raise ValueError('Model output-token budget exhausted')
                             report=arguments.get('report')
                             if not isinstance(report,dict) or 'facts' not in report or 'evidence' not in report:
@@ -287,13 +287,14 @@ class GraphHarness:
             else:s['change_execution'](owner,id,{'state':'CANCELLED'})
             raise
         except Exception as error:
+            from backend.model_errors import failure
+            error_code,reason=failure(error)
             # Policy and budget reasons are safe; raw remote/provider errors are never exposed.
-            reason=('Policy denied this execution' if isinstance(error,HTTPException) and error.status_code in (401,403) else 'Node input/output validation or execution failed; inspect configuration and saved build results')
             safe_prefixes=('Graph step/iteration budget','Model output-token budget','Tool budget','Checkpoint state budget','Interrupted non-idempotent tool outcome','No runnable node','References must point','Argument nesting limit','Condition input is missing')
             if isinstance(error,ValueError) and str(error).startswith(safe_prefixes):reason=str(error)
             if isinstance(error,TimeoutError):reason='Execution or node time budget exceeded'
             self.event(cp,'failed',reason[:300])
-            s['change_execution'](owner,id,{'state':'FAILED','error':reason[:300] or 'Execution time budget exceeded','graph_checkpoint':cp,'events':cp['events']})
+            s['change_execution'](owner,id,{'state':'FAILED','error_code':error_code,'failed_node':(cp.get('current') or {}).get('id'),'error':reason[:300] or 'Execution time budget exceeded','graph_checkpoint':cp,'events':cp['events']})
             s['finish_message'](owner,run['conversation'],id,'Workflow failed: '+(reason[:300] or 'Time budget exceeded'))
         finally:
             heartbeat.cancel();await asyncio.gather(heartbeat,return_exceptions=True)

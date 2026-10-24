@@ -149,6 +149,8 @@ class ProductAgents:
     async def requirements(self,args,context):
         spec=self.spec(context.owner,args.spec_id,args.revision)
         snapshot={'name':spec['name'],'goal':spec['goal'],'revision':spec['revision'],'requirements':spec['requirements'],'missing':[key for key,_,_ in QUESTIONS if key not in spec['requirements']]}
+        with self.s['conn']() as c:document=c.execute("SELECT body->>'text' AS text FROM records WHERE owner=%s AND id=%s AND kind='product_document'",(context.owner,'prd:'+spec['id'])).fetchone()
+        if document:snapshot['prd_draft']=document['text'][:6000]
         text=json.dumps(snapshot,ensure_ascii=False)
         messages=self.s['get'](context.owner,spec['conversation_id'],'conversation')['messages'][:-2] if spec.get('conversation_id') else []
         conversation_text=json.dumps([{'role':m['role'],'text':m['text'][:2000]} for m in messages[-6:]])

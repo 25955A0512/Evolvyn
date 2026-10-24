@@ -539,6 +539,7 @@ async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
 
 @app.post('/api/conversations/{id}/runs',status_code=202)
 async def launch(id:str,body:Message,owner=Depends(auth)):
+    POLICY.require(owner,'discuss')
     from backend.agent_memory import reject_secrets
     reject_secrets(body.text)
     convo=get(owner,id,'conversation')
@@ -963,3 +964,10 @@ CHAT=AssistantChat({name:globals()[name] for name in ('get','conn','claim_job','
 from backend.product_agents import ProductAgents
 PRODUCT_AGENTS=ProductAgents({name:globals()[name] for name in ('get','save','conn','POLICY','REGISTRY','GRAPH_HARNESS','STUDIO')})
 PRODUCT_AGENTS.install(app,auth)
+
+from backend.connector_oauth import ConnectorOAuth
+CONNECTOR_OAUTH=ConnectorOAuth({name:globals()[name] for name in ('get','save','listing','conn','POLICY','VAULT','MCP_REGISTRY')})
+CONNECTOR_OAUTH.install(app,auth)
+
+from backend.product_documents import install as install_product_documents
+install_product_documents(app,auth,get,conn,POLICY)

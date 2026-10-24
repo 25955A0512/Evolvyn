@@ -111,3 +111,18 @@ Validation: **130 tests passed**. The live e-commerce browser journey and existi
 - [ ] Live remote-provider acceptance requires valid private credentials.
 
 Verification for this revision: 158 backend tests pass; TypeScript/Vite production build passes. Live Chromium checks pass for account, e-commerce, control center, guided studio, canvas/evolution, and the new local-model builder. The live source-build case uses PRD, architecture and interface agents plus human approval; the four-agent local run separately verified reviewer rejection blocks source generation. Controlled model fixtures verify the four-agent positive path, stale/replayed approvals and invalid outputs. Both emitted frontend stacks compile through the real isolated service; unauthorized requests, invalid syntax/imports/paths and incomplete receipts are rejected. The exported runtime passes independent startup/accounts/MCP/governance/nested-export checks. Gemini/Groq calls remain unverified without credentials.
+
+
+## Connected identity and Gemini routing revision
+
+- [x] Native Gemini API gateway, workspace-scoped default inference for one unbound saved Gemini key, explicit “Use for all agents” control and safe actionable provider failure diagnostics. Explicit routes and local-only policy remain authoritative.
+- [x] Visible Google/GitHub signup controls with in-app setup guidance, verified OAuth return-session handling and query-free API/proxy logging.
+- [x] Browser-bound GitHub connector authorization, encrypted token storage, actual trusted stdio MCP discovery, public read-only repository/issue tools, connection tests and local disconnect.
+- [x] Discussion-only membership, no-upload model discussion, workspace-key platform help without business-document context, refreshable module routes and lazy-loaded major panels.
+- [x] Editable revision-checked PRD drafts, real DOCX download and responsive product panels; late document loads cannot erase unsaved edits.
+- [ ] Live Gemini and OAuth provider acceptance: the user's saved key is in their local database, and OAuth applications have not been registered. In-app setup guidance is implemented as requested.
+- [ ] General MCP OAuth, other native service authorizations, private GitHub App scopes/writes, arbitrary generated-app execution/repair/preview, source editing/diffs/rollback and cloud release remain incomplete. See PRODUCT_STATUS.md and CONNECTED_IDENTITY.md.
+
+Validation: **171 backend tests passed**, with one dependency deprecation warning. TypeScript/Vite production build passed. Chromium acceptance passed for routed modules and refresh/back navigation, OAuth setup and return-session handling, default-key controls, saved PRD/DOCX, existing guided studio, account, commerce, control center and canvas/evolution. Both generated frontend stacks passed real isolated compiler checks, including invalid syntax/import/path and unauthorized-request rejection. Independent exported-runtime startup/accounts/MCP/governance/nested-export checks passed. Actual API/nginx logs exclude synthetic OAuth codes and state while retaining request IDs. Controlled native-Gemini and OAuth fixtures cover external boundaries; they do not establish live provider connectivity.
+
+A local readiness-only probe completed 100 requests at concurrency 4 with zero errors, median 46.99 ms and p95 176.78 ms. This measures nginx/API/PostgreSQL health only, excludes authentication, models and tools, and is not an agent-workload or production-capacity benchmark. No cloud deployment or production-readiness certification is claimed.

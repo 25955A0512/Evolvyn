@@ -59,8 +59,10 @@ export function PlatformPanel({
   onClose,
   onProject,
   onRefresh,
+  onTabChange,
 }: {
   view: View;
+  onTabChange?: (tab:View)=>void;
   api: ReturnType<typeof client>;
   businessId: string;
   conversation: Convo | null;
@@ -68,7 +70,9 @@ export function PlatformPanel({
   onProject: () => void;
   onRefresh?: () => void;
 }) {
-  const [tab, setTab] = useState<View>(view);
+  const [tab, setTabState] = useState<View>(view);
+  function setTab(value:View){setTabState(value);onTabChange?.(value);}
+  useEffect(()=>setTabState(view),[view]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);

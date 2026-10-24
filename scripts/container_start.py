@@ -23,5 +23,5 @@ if model.is_file() and binary.is_file():
     except Exception:print('Local model verification failed; the API will expose the labeled fallback.',file=sys.stderr)
 if model_verified:
     children.append(subprocess.Popen([str(binary),'--model',str(model),'--host','127.0.0.1','--port','8081','--alias','qwen2.5-1.5b-instruct','--threads','4','--ctx-size','4096','--parallel','1','--n-predict','1536']))
-children.append(subprocess.Popen([sys.executable,'-m','uvicorn','backend.app:app','--host','0.0.0.0','--port','8000','--proxy-headers','--forwarded-allow-ips','*']))
+children.append(subprocess.Popen([sys.executable,'-m','uvicorn','backend.app:app','--host','0.0.0.0','--port','8000','--no-access-log','--proxy-headers','--forwarded-allow-ips','*']))
 status=children[-1].wait();stop(exitcode=status)
