@@ -65,6 +65,20 @@ Infrastructure module acceptance: 65 isolated-schema tests pass. Desktop/mobile 
 - [x] Persistent build-scoped interactive prototypes, source inspection/download, honest capability and pending-requirement reporting.
 - [x] Model input/output credential guards, per-agent usage, fresh background membership and outbound provider-policy checks, including the compatibility analysis endpoint.
 - [x] Conversational studio interface based on the supplied reference, with product/agents/memory/vault/integration areas and desktop/mobile acceptance.
-- [ ] Arbitrary model-authored code execution, additional stack adapters, semantic/vector indexing, production OAuth/SSO/recovery, cloud deployment and independent security certification.
+- [ ] Arbitrary model-authored code execution, additional stack adapters, semantic/vector indexing, live OAuth validation, SSO/MFA/recovery, cloud deployment and independent security certification.
 
-Final automated validation: **86 tests passed**. Generated React compilation, generated FastAPI private-account CRUD, and generated Express against isolated real PostgreSQL were exercised. The complete studio browser flow passed in Chromium, as did existing account and control-center flows. A live four-specialist Qwen discussion completed in 134 seconds without fallback; its missing-citation issue remained visible at human review. Source-build validation is distinguished from a deployed generated runtime. See MODERN_STACK.md and CLOUD_DEPLOYMENT.md.
+Previous studio milestone: **86 tests passed**. Generated React compilation, generated FastAPI private-account CRUD, and generated Express against isolated real PostgreSQL were exercised. The complete studio browser flow passed in Chromium, as did existing account and control-center flows. A live four-specialist Qwen discussion completed in 134 seconds without fallback; its missing-citation issue remained visible at human review. Source-build validation is distinguished from a deployed generated runtime. See MODERN_STACK.md and CLOUD_DEPLOYMENT.md.
+
+## Connected evolution runtime
+
+- [x] Shared runtime discovery and entity/action ontology across actual tools and adapters.
+- [x] First-party dated series comparisons, comparable public discussion windows, source outage fallback, source-linked product/promotion experiments and MCP evidence.
+- [x] Growth snapshot → specialist discussion → human decision → scoped memory → explicit product revision.
+- [x] Versioned page drawing, draggable labeled blocks, freehand annotations, structured design prompts and application to generated UI/prototype.
+- [x] Visual executable graph nodes/connections, conditions, approval/resume, bounded cycles and existing runtime execution controls.
+- [x] Complete runtime source included in product exports, isolated fresh accounts/vault/database, tested independent startup, real MCP and nested export.
+- [x] Google/GitHub OAuth adapters, verified email, PKCE, browser/state/replay defenses and explicit linking; password change and all-session revocation.
+- [x] Larger readable typography, responsive canvas and corrected nested-aside/composer overflow on mobile.
+- [ ] Live OAuth credential acceptance, native CRM/social OAuth, arbitrary-code sandbox, more source adapters, semantic memory, MFA/recovery and production deployment/security review.
+
+Current validation: **103 unit/API/integration tests passed**. The connected browser flow passes including a visual three-node graph and approval/resume. Existing account, product studio and control-center browser regressions pass. Exported product and runtime console compile; the exported API starts independently against an isolated real PostgreSQL schema, invokes a real bundled MCP server, enforces governance, and produces another complete export. Live public research returned real indexed counts. OAuth endpoints use mocked external responses in tests; no real OAuth credentials or third-party CRM credentials were available. No public hosting, arbitrary-code execution or production certification is claimed.

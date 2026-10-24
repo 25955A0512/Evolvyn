@@ -2,7 +2,8 @@
 .local
 .venv
 .pytest_cache
-frontend
+frontend/dist
+frontend/node_modules
 attachments
 **/__pycache__
 .env

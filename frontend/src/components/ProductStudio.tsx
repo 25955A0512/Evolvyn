@@ -57,6 +57,29 @@ function ProductPreview({ api, build }: { api: API; build: any }) {
           {error}
         </div>
       )}
+      {!!build.spec.design?.elements?.length && (
+        <section
+          className="design-preview-layout"
+          aria-label="Canvas design preview"
+        >
+          {[...build.spec.design.elements]
+            .sort((a: any, b: any) => a.y - b.y || a.x - b.x)
+            .map((e: any) => (
+              <article key={e.id} className={e.kind}>
+                {e.kind === "heading" ? (
+                  <h3>{e.label}</h3>
+                ) : e.kind === "button" ? (
+                  <span>{e.label}</span>
+                ) : (
+                  <p>
+                    {e.kind === "image" ? "◇ " : ""}
+                    {e.label}
+                  </p>
+                )}
+              </article>
+            ))}
+        </section>
+      )}
       <div className="prototype-stat">
         <strong>{rows.length}</strong>
         <span>{schema?.label} in this prototype</span>

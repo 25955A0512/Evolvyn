@@ -826,3 +826,13 @@ async def recall_memory_tool(arguments,context):
     if arguments.project_id:get(context.owner,arguments.project_id,'project')
     return {'memories':MEMORY.recall(context.owner,arguments.query,arguments.project_id,arguments.agent)}
 REGISTRY.register(Tool('recall_agent_memory','Retrieve reviewed agent memory with project, role, retention and provenance filters',RecallInput,RecallOutput,recall_memory_tool,timeout=5))
+
+
+from backend.canvas import install as install_canvas
+install_canvas(app,auth,get,save,listing,POLICY)
+from backend.runtime_catalog import install as install_runtime_catalog
+install_runtime_catalog(app,auth,TOOL_PLUGINS,POLICY)
+from backend.growth import install as install_growth
+install_growth(app,auth,{name:globals()[name] for name in ('get','save','listing','POLICY','TOOL_PLUGINS')},MEMORY)
+from backend.oauth import install as install_oauth
+install_oauth(app,conn,auth)

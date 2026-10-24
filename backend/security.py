@@ -21,7 +21,7 @@ def install(app,save):
     async def guard(request:Request,call_next):
         length=request.headers.get('content-length','0')
         if length.isdigit() and int(length)>3_000_000:return JSONResponse(status_code=413,content={'detail':'Request exceeds 3 MB'})
-        if request.url.path in ('/api/auth/login','/api/auth/register','/api/demo/session'):
+        if request.url.path in ('/api/auth/login','/api/auth/register','/api/demo/session','/api/auth/password') or request.url.path.startswith('/api/auth/oauth/'):
             key=(request.client.host if request.client else 'unknown',request.url.path)
             now=time.monotonic();bucket=buckets[key]
             while bucket and bucket[0]<now-60:bucket.popleft()

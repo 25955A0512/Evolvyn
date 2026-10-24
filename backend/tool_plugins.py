@@ -64,7 +64,8 @@ class ToolPlugins:
             except HTTPException:continue
             if capability and capability not in spec['capabilities']:continue
             if entity and entity not in spec['entities']:continue
-            result.append(spec)
+            from backend.runtime_catalog import annotate
+            result.append(annotate(spec))
         return result
     def validate(self,owner,name,arguments):
         def reject_credentials(value):

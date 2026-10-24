@@ -26,12 +26,17 @@ class MembershipInput(BaseModel):
 class OrganizationInput(BaseModel):
     name:str=Field(min_length=1,max_length=100)
 
+def session_cookie_name():
+    return os.getenv('EVOLVYN_SESSION_COOKIE','evolvyn_session')
+
 
 def initialize(c):
     c.execute('CREATE TABLE IF NOT EXISTS accounts (id text PRIMARY KEY,email text UNIQUE NOT NULL,name text NOT NULL,password_hash text NOT NULL,created timestamptz DEFAULT now())')
     c.execute('CREATE TABLE IF NOT EXISTS organizations (id text PRIMARY KEY,name text NOT NULL,created timestamptz DEFAULT now())')
     c.execute('CREATE TABLE IF NOT EXISTS memberships (account_id text REFERENCES accounts(id),organization_id text REFERENCES organizations(id),role text NOT NULL,PRIMARY KEY(account_id,organization_id))')
     c.execute('CREATE TABLE IF NOT EXISTS account_sessions (digest text PRIMARY KEY,account_id text REFERENCES accounts(id),organization_id text REFERENCES organizations(id),expires timestamptz NOT NULL)')
+    c.execute('CREATE TABLE IF NOT EXISTS oauth_identities (provider text NOT NULL,subject text NOT NULL,account_id text NOT NULL REFERENCES accounts(id),PRIMARY KEY(provider,subject))')
+    c.execute('CREATE TABLE IF NOT EXISTS oauth_states (digest text PRIMARY KEY,provider text NOT NULL,verifier text NOT NULL,browser_digest text NOT NULL,link_account text REFERENCES accounts(id),expires timestamptz NOT NULL)')
 
 
 def password_hash(password,salt=None):
@@ -41,11 +46,12 @@ def password_hash(password,salt=None):
 
 
 def verify_password(password,stored):
+    if ':' not in stored:return False
     return hmac.compare_digest(password_hash(password,stored.split(':',1)[0]),stored)
 
 
 def resolve(request,authorization,organization,conn):
-    token=request.cookies.get('evolvyn_session')
+    token=request.cookies.get(session_cookie_name())
     if not token or authorization not in ('','Bearer cookie'):return None
     digest=hashlib.sha256(token.encode()).hexdigest()
     with conn() as c:
@@ -72,7 +78,7 @@ def install(app,conn,auth):
     def start_session(response,account,organization,c):
         token=secrets.token_urlsafe(32)
         c.execute('INSERT INTO account_sessions(digest,account_id,organization_id,expires) VALUES (%s,%s,%s,%s)',(hashlib.sha256(token.encode()).hexdigest(),account,organization,datetime.now(timezone.utc)+timedelta(days=7)))
-        response.set_cookie('evolvyn_session',token,httponly=True,secure=os.getenv('COOKIE_SECURE')=='1',samesite='strict',max_age=604800,path='/')
+        response.set_cookie(session_cookie_name(),token,httponly=True,secure=os.getenv('COOKIE_SECURE')=='1',samesite='strict',max_age=604800,path='/')
         return {'account_id':account,'organization_id':organization,'authentication':'http_only_cookie'}
 
     @app.post('/api/auth/register',status_code=201)
@@ -100,9 +106,9 @@ def install(app,conn,auth):
     @app.post('/api/auth/logout')
     def logout(request:Request,response:Response):
         if request.headers.get('x-requested-with')!='Evolvyn':raise HTTPException(403,'Application request header required')
-        token=request.cookies.get('evolvyn_session','')
+        token=request.cookies.get(session_cookie_name(),'')
         with conn() as c:c.execute('DELETE FROM account_sessions WHERE digest=%s',(hashlib.sha256(token.encode()).hexdigest(),))
-        response.delete_cookie('evolvyn_session',path='/')
+        response.delete_cookie(session_cookie_name(),path='/')
         return {'signed_out':True}
 
     @app.get('/api/auth/me')

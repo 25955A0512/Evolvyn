@@ -58,6 +58,8 @@ class PolicyEngine:
         return None
     def resource(self,owner,action,kind,body,id=None):
         p=self.require(owner,action)
+        if kind=='canvas' and body.get('graph'):
+            self.resource(owner,action,'agent_graph',body['graph'])
         if kind=='agent_graph':
             def scopes(value,depth=0):
                 if depth>14:return

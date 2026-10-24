@@ -17,8 +17,18 @@ import type { client } from "../api";
 import type { Convo } from "../types";
 import { ProductStudio } from "./ProductStudio";
 import { DiscussionRoom } from "./DiscussionRoom";
+import { DesignCanvas } from "./DesignCanvas";
+import { GrowthWorkspace } from "./GrowthWorkspace";
 export type StudioTab =
-  "build" | "discuss" | "agents" | "memory" | "vault" | "integrations";
+  | "build"
+  | "discuss"
+  | "agents"
+  | "memory"
+  | "vault"
+  | "integrations"
+  | "canvas"
+  | "growth"
+  | "runtime";
 type API = ReturnType<typeof client>;
 function VaultPanel({ api }: { api: API }) {
   const [data, setData] = useState<any>(null),
@@ -834,6 +844,9 @@ export function AgentWorkspace({
   const [tab, setTab] = useState<StudioTab>(initialTab);
   const tabs = [
     { id: "build", name: "Build a product", icon: Code2 },
+    { id: "growth", name: "Growth insights", icon: Brain },
+    { id: "canvas", name: "Canvas", icon: Workflow },
+    { id: "runtime", name: "Shared runtime", icon: Shield },
     { id: "discuss", name: "Discussion room", icon: Users },
     { id: "agents", name: "Agents", icon: Workflow },
     { id: "memory", name: "Agent memory", icon: Brain },
@@ -892,6 +905,24 @@ export function AgentWorkspace({
           </div>
         </header>
         <div className="studio-scroll">
+          {tab === "canvas" && (
+            <DesignCanvas
+              api={api}
+              projectId={projectId}
+              conversation={conversation}
+            />
+          )}
+          {tab === "growth" && (
+            <GrowthWorkspace
+              api={api}
+              projectId={projectId}
+              businessId={businessId}
+              conversation={conversation}
+            />
+          )}
+          {tab === "runtime" && (
+            <RuntimePanel api={api} onTab={setTab} onManage={onManage} />
+          )}
           {tab === "build" && <ProductStudio api={api} projectId={projectId} />}{" "}
           {tab === "discuss" && (
             <DiscussionRoom
@@ -916,6 +947,133 @@ export function AgentWorkspace({
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function RuntimePanel({
+  api,
+  onTab,
+  onManage,
+}: {
+  api: API;
+  onTab: (tab: StudioTab) => void;
+  onManage: () => void;
+}) {
+  const [runtime, setRuntime] = useState<any>(null),
+    [catalog, setCatalog] = useState<any>(null),
+    [entity, setEntity] = useState(""),
+    [action, setAction] = useState(""),
+    [error, setError] = useState("");
+  useEffect(() => {
+    Promise.all([api.json("/runtime"), api.json("/runtime/ontology")])
+      .then(([a, b]) => {
+        setRuntime(a);
+        setCatalog(b);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  const tabs: Record<string, StudioTab> = {
+    specialists: "discuss",
+    models: "vault",
+    memory: "memory",
+    canvas: "canvas",
+    growth: "growth",
+  };
+  return (
+    <div className="studio-page">
+      <div className="studio-page-title">
+        <span className="eyebrow">ONE SHARED EXECUTION SYSTEM</span>
+        <h1>A connected runtime for every product.</h1>
+        <p>
+          The builder, growth review and canvas use these same services. Product
+          source exports include this complete runtime in an isolated
+          deployment, with fresh accounts, policies and credentials.
+        </p>
+      </div>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      <div className="studio-two-columns">
+        {runtime?.components.map((c: any) => (
+          <button
+            className="studio-card runtime-component"
+            key={c.id}
+            onClick={() => (tabs[c.id] ? onTab(tabs[c.id]) : onManage())}
+          >
+            <Shield size={22} />
+            <strong>{c.name}</strong>
+            <span>Open configuration →</span>
+          </button>
+        ))}
+      </div>
+      <h2>Discover tools by ontology</h2>
+      <div className="canvas-toolbar">
+        <label>
+          Entity
+          <select
+            aria-label="Ontology entity"
+            value={entity}
+            onChange={(e) => setEntity(e.target.value)}
+          >
+            <option value="">All entities</option>
+            {Array.from(
+              new Set<string>(
+                catalog?.tools.flatMap((t: any) => t.ontology.entities) || [],
+              ),
+            )
+              .sort()
+              .map((e) => (
+                <option key={e}>{e}</option>
+              ))}
+          </select>
+        </label>
+        <label>
+          Action
+          <select
+            aria-label="Ontology action"
+            value={action}
+            onChange={(e) => setAction(e.target.value)}
+          >
+            <option value="">All actions</option>
+            {Array.from(
+              new Set<string>(
+                catalog?.tools.flatMap((t: any) => t.ontology.actions) || [],
+              ),
+            )
+              .sort()
+              .map((e) => (
+                <option key={e}>{e}</option>
+              ))}
+          </select>
+        </label>
+      </div>
+      <div className="capability-list">
+        {catalog?.tools
+          .filter(
+            (t: any) =>
+              (!entity || t.ontology.entities.includes(entity)) &&
+              (!action || t.ontology.actions.includes(action)),
+          )
+          .map((t: any) => (
+            <details className="studio-card" key={t.name}>
+              <summary>
+                {t.name} · {t.risk}
+              </summary>
+              <p>{t.description}</p>
+              <p>
+                Entities: {t.ontology.entities.join(", ")} · Actions:{" "}
+                {t.ontology.actions.join(", ")}
+              </p>
+              <pre>{JSON.stringify(t.ontology.input_contract, null, 2)}</pre>
+              <p>
+                Adapter: {t.adapter} · Permission: {t.permission}
+              </p>
+            </details>
+          ))}
+      </div>
     </div>
   );
 }

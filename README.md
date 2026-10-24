@@ -65,6 +65,43 @@ Open **Discussion room**, choose or create an evidence conversation, upload CRM 
 
 The generated starter implements accounts and private entity CRUD. Feature requests outside those adapters are shown as pending requirements. The prototype uses Evolvyn workspace storage; arbitrary generated code is not run in the platform API. Unrestricted code execution, additional stacks and automatic cloud deployment need a separate sandbox/broker. See [implemented modern stack](docs/MODERN_STACK.md) and [cloud recommendation](docs/CLOUD_DEPLOYMENT.md).
 
+## Connected growth, canvas and product runtime
+
+Open **Build a product** (or **Grow your business**) and use the studio navigation:
+
+- **Growth insights:** upload feedback and dated funnel exports, optionally fetch two comparable windows of public discussion activity, and review source-linked experiment suggestions. Dated first-party conversion changes and public discussion counts are labeled separately. Source outages retain first-party analysis without inventing a trend. Optional read-only MCP context is governed by the same data policy.
+- **Canvas:** add and drag labeled page blocks, annotate with freehand strokes, save revisions, inspect the generated design prompt, and apply a design to a product requirements revision. Rebuild to include its layout in the prototype and source. Freehand annotations are preserved; no OCR or arbitrary sketch-to-code capability is claimed.
+- **Node workflow:** add agent/tool/condition/approval/result nodes, connect branches, edit arguments and execution budgets, and run the graph through the existing harness. Pending writes and review nodes pause for explicit approval. Cycles remain bounded by visits, steps, calls, tokens and time.
+- **Shared runtime:** inspect the actual services and filter the tool ontology by entity and action. It connects to the existing registry, gateways, memory and governance rather than a duplicate execution engine.
+
+Product ZIPs now include the complete Evolvyn runtime source and console, with an isolated database, private network, unique browser-cookie namespace and fresh accounts/vault. Within the downloaded product, run:
+
+```bash
+python scripts/prepare_product.py
+docker compose up --build -d --wait
+```
+
+The generated product runs at `http://localhost:8000`, and its included agent console at `http://localhost:3001`. These addresses apply to the computer running that downloaded product. No existing keys, model files, tenant records or integration instances are copied. Product data reaches agents only through authorized uploads or an explicitly configured connector. The runtime adds services and memory requirements; review resources and TLS/secrets configuration before cloud deployment. Additional requested domain features remain visible as pending work, not silently implemented by the templates.
+
+![Saved page design canvas](docs/screenshots/design-canvas.png)
+
+![Evidence-led growth insights](docs/screenshots/growth-insights.png)
+
+## Google, GitHub and account security
+
+Email/password accounts work immediately. Optional Google and GitHub login uses authorization code + PKCE, browser-bound expiring single-use state, verified provider email, hashed revocable sessions and fixed provider endpoints. An existing email is never automatically linked: sign in with the original method, then explicitly link the provider in **Account & team → Account security**. That panel also changes passwords (revoking all sessions) and signs out all devices.
+
+To enable live sign-in, create OAuth applications with the provider, register the matching callback URLs, and add these variables to the private **`.local/deploy.env`** file. Keep actual client secrets out of chat and source control:
+
+```dotenv
+OAUTH_GOOGLE_CLIENT_ID=
+OAUTH_GOOGLE_CLIENT_SECRET=
+OAUTH_GITHUB_CLIENT_ID=
+OAUTH_GITHUB_CLIENT_SECRET=
+```
+
+Local callbacks are `http://localhost:3000/api/auth/oauth/google/callback` and `http://localhost:3000/api/auth/oauth/github/callback`. For hosting, use your HTTPS `PUBLIC_ORIGIN`, update the registered callbacks and set `COOKIE_SECURE=1`. Re-run Docker Compose after configuration. Unconfigured sign-in providers remain unavailable. Google/GitHub protocol and security behavior are tested with mocked provider responses; real provider login requires these credentials and has not been live-validated. MFA, recovery/email verification and an independent production security review remain launch work.
+
 ## Working features
 
 - Email/password accounts with scrypt hashes, HttpOnly sessions, organization isolation and owner/admin/editor/viewer roles.
@@ -109,10 +146,12 @@ npm --prefix frontend run build
 EVOLVYN_TEST_URL=http://localhost:3000 python3 tests/e2e_account.py
 python3 tests/e2e_control_center.py
 python3 tests/e2e_studio.py
+python3 tests/e2e_evolution.py
+.venv/bin/python tests/live_exported_runtime.py
 bash scripts/backup.sh
 ```
 
-86 automated tests pass against an isolated temporary PostgreSQL schema. Chromium validated account creation, private uploads, analysis/approval, refresh persistence, team access, canvas editing and a saved workflow running with its configured recommendation count. Docker images build and all three services pass readiness. Public research also succeeds through the container's configured proxy. Actual local inference and model-generated recommendations passed earlier acceptance runs. The most recent strict local-AI acceptance run rejected structured proposals and used the labeled heuristic fallback; that strict check failed. A subsequent deterministic upload/analysis/approval/task run passed. Public Internet hosting has not been performed.
+103 automated tests pass against an isolated temporary PostgreSQL schema. Chromium validated account creation, private uploads, analysis/approval, refresh persistence, team access, canvas editing and a saved workflow running with its configured recommendation count. Docker images build and all three services pass readiness. Public research also succeeds through the container's configured proxy. Actual local inference and model-generated recommendations passed earlier acceptance runs. The most recent strict local-AI acceptance run rejected structured proposals and used the labeled heuristic fallback; that strict check failed. A subsequent deterministic upload/analysis/approval/task run passed. Public Internet hosting has not been performed.
 
 Backups keep the development database and Compose data separately in ignored mode-0600 files. An empty Compose database is restored by the deploy script; existing records are not overwritten. Protect backups as business data. Cloud publication and restoration in a new task remain separate, unverified platform steps.
 
@@ -121,3 +160,5 @@ Known remaining work: embedding-based semantic retrieval, identity recovery/emai
 Remote MCP credentials are optional. Add the hostname in Governance, register its HTTPS endpoint, and use the organization-specific environment-variable prefix displayed in the form. Supply the actual value through private runtime configuration; Compose optionally reads ignored `.local/mcp-secrets.env`. Redeploy after changing credentials. Never paste a key into tool arguments or an endpoint URL. Bundled stdio profiles need no credentials. Remote transport and policy boundaries have automated coverage; no third-party authenticated MCP deployment was available for live acceptance.
 
 Current studio acceptance: the generated FastAPI application was executed with private-account CRUD tests; a generated React frontend compiled; the generated Express backend ran against an isolated real PostgreSQL schema and passed account/CRUD/isolation checks. The full studio browser flow passed on desktop and mobile. Four actual local Qwen specialists completed LangGraph handoffs without fallback in 134 seconds; the reviewer flagged a missing citation, leaving a human review gate. Optional remote model credentials and third-party CRM/social MCP services have not been live-validated.
+
+Latest connected-runtime acceptance: **103 tests passed** against isolated PostgreSQL schemas. The growth/canvas browser journey exercised upload, specialist handoffs and decision approval, page drawing, visual node connections, workflow approval/resume, tool ontology filtering, runtime source download, reload persistence and mobile layout. Existing account, studio and registry/governance browser regressions also passed. Exported product and agent-console frontends compiled; the exported API ran independently, discovered and invoked a real stdio MCP tool, enforced a tool denial, and generated a complete nested product export. The live public research connection returned actual indexed discussion counts; these were not treated as market-growth facts.

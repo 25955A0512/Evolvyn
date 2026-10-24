@@ -39,6 +39,7 @@ export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
             <p>{me.account.email}</p>
             <small>Current role: {me.role}</small>
           </div>
+          <AccountSecurity api={api} />
           <h3>Organization members</h3>
           {members.map((m) => (
             <div className="integration" key={m.id}>
@@ -148,5 +149,112 @@ export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
         </div>
       )}
     </>
+  );
+}
+
+function AccountSecurity({ api }: { api: ReturnType<typeof client> }) {
+  const [security, setSecurity] = useState<any>(null),
+    [providers, setProviders] = useState<any[]>([]),
+    [error, setError] = useState("");
+  useEffect(() => {
+    Promise.all([api.json("/auth/security"), api.json("/auth/providers")])
+      .then(([a, b]) => {
+        setSecurity(a);
+        setProviders(b);
+      })
+      .catch((e) => setError(e.message));
+  }, []);
+  async function revoke() {
+    try {
+      await api.json("/auth/sessions/revoke-all", { method: "POST" });
+      sessionStorage.removeItem("evolvyn-token");
+      sessionStorage.removeItem("evolvyn-organization");
+      window.location.reload();
+    } catch (e: any) {
+      setError(e.message);
+    }
+  }
+  return (
+    <section className="studio-card studio-form">
+      <h3>Account security</h3>
+      {error && (
+        <p role="alert" className="error">
+          {error}
+        </p>
+      )}
+      <p>
+        {security?.active_sessions || 0} active sessions. Linked providers:{" "}
+        {security?.linked_providers?.join(", ") || "none"}.
+      </p>
+      {providers.map((p) => (
+        <div key={p.id}>
+          <strong>{p.name}</strong>
+          {p.enabled ? (
+            <button
+              disabled={security?.linked_providers?.includes(p.id)}
+              onClick={async () => {
+                try {
+                  const result = await api.json(
+                    "/auth/oauth/" + p.id + "/link",
+                    { method: "POST" },
+                  );
+                  window.location.assign(result.authorize_url);
+                } catch (e: any) {
+                  setError(e.message);
+                }
+              }}
+            >
+              {security?.linked_providers?.includes(p.id)
+                ? "Linked"
+                : "Link account"}
+            </button>
+          ) : (
+            <p>Administrator OAuth configuration required.</p>
+          )}
+        </div>
+      ))}
+      <details>
+        <summary>Change password</summary>
+        <form
+          onSubmit={async (e) => {
+            e.preventDefault();
+            const d = Object.fromEntries(new FormData(e.currentTarget));
+            try {
+              await api.json("/auth/password", {
+                method: "POST",
+                body: JSON.stringify(d),
+              });
+              sessionStorage.removeItem("evolvyn-token");
+              window.location.reload();
+            } catch (e: any) {
+              setError(e.message);
+            }
+          }}
+        >
+          <label>
+            Current password
+            <input
+              type="password"
+              name="current_password"
+              required
+              autoComplete="current-password"
+            />
+          </label>
+          <label>
+            New password
+            <input
+              type="password"
+              name="new_password"
+              minLength={12}
+              maxLength={128}
+              autoComplete="new-password"
+              required
+            />
+          </label>
+          <button>Change password and sign out all sessions</button>
+        </form>
+      </details>
+      <button onClick={revoke}>Sign out all devices</button>
+    </section>
   );
 }

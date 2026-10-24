@@ -48,3 +48,13 @@ See [cloud deployment](CLOUD_DEPLOYMENT.md) for the AWS recommendation and produ
 - `backend/agent_memory.py`: memory lifecycle and retrieval.
 - `backend/product_studio.py`, `backend/product_templates.py`: requirements, immutable builds, source adapters and prototypes.
 - `frontend/src/components/AgentWorkspace.tsx`, `ProductStudio.tsx`, `DiscussionRoom.tsx`: user-facing workflows.
+
+## Connected runtime extension
+
+`backend/growth.py` combines first-party evidence with optional bounded public discussion windows and authorized read-only MCP observations. Growth reports feed the same LangGraph discussion service; approved decisions become scoped memory and explicit product requirement revisions. Measurements, public activity and experiment hypotheses remain separate.
+
+`backend/canvas.py` persists bounded structured drawings, freehand annotations, design prompts and executable graph drafts. It checks scope/revisions before applying a design. Published graphs use `graph_harness.py`; there is no canvas-only executor. `backend/runtime_catalog.py` provides discovery and entity/action ontology over the real tool catalog. Custom registrations extend semantic metadata while schemas, capability/risk checks and approval rules still govern invocation.
+
+`backend/runtime_export.py` packages an allowlisted copy of the actual runtime source alongside each generated application, with fresh database/vault/accounts, separate private networks, a unique browser-cookie namespace and a separate console origin. It exports neither secrets nor existing tenant resources. The service can itself create products. It requires authorized uploads/connectors to ingest product data; it is not automatic access to the application's private database. Source generation still uses trusted adapters, not unrestricted code execution.
+
+`backend/oauth.py` supplies Google/GitHub authorization code + PKCE, verified identity, explicit linking and session/password controls. Optional credentials are deployment configuration, never model prompts. Mocked-provider acceptance covers both providers; live provider sign-in remains unverified until credentials are configured.

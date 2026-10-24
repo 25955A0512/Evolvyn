@@ -22,6 +22,7 @@ class ContextCall(BaseModel):
 class DiscussInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     conversation_id:str
+    growth_report_id:str|None=None
     goal:str=Field(min_length=5,max_length=2000)
     mode:Literal['default','evidence','local','provider','groq','gemini','openrouter']='default'
     allow_fallback:bool=True
@@ -75,6 +76,11 @@ class Discussion:
                     cp['report']=await s['TOOL_PLUGINS'].invoke(owner,'analyze_business',{'conversation_id':conversation['id'],'query':body.goal},ToolContext(owner))
                     checkpoint()
                 report=cp['report']
+                if body.growth_report_id and not cp.get('growth_attached'):
+                    growth=s['get'](owner,body.growth_report_id,'growth_report')
+                    if growth['conversation']!=conversation['id']:raise HTTPException(422,'Growth report must belong to this conversation')
+                    report['evidence'].append({'source':'growth-report:'+growth['id'],'citation':'growth-report:'+growth['id'],'excerpt':json.dumps({'market':growth['market'],'first_party_change':growth.get('first_party_change'),'actions':growth['actions'],'connector_evidence':growth['connector_evidence']})[:14000],'score':1})
+                    cp['growth_attached']=True;checkpoint()
                 for index,call in enumerate(body.context_tools):
                     marker='context_'+str(index)
                     if marker in cp:continue
@@ -136,6 +142,7 @@ def install(app,auth,harness):
     @app.post('/api/discussions',status_code=202)
     async def start(body:DiscussInput,owner=Depends(auth)):
         conversation=s['get'](owner,body.conversation_id,'conversation');s['POLICY'].require(owner,'write');reject_secrets(body.goal)
+        if body.growth_report_id and s['get'](owner,body.growth_report_id,'growth_report')['conversation']!=body.conversation_id:raise HTTPException(422,'Growth report must belong to this conversation')
         for agent in ('business_analyst','marketing_analyst','product_manager','reviewer'):
             with model_scope(owner,agent):s['POLICY'].data(owner,conversation,effective_mode(body.mode))
         for call in body.context_tools:

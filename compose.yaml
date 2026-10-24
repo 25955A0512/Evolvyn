@@ -46,6 +46,10 @@ services:
         required: false
         format: raw
     environment:
+      OAUTH_GOOGLE_CLIENT_ID: ${OAUTH_GOOGLE_CLIENT_ID:-}
+      OAUTH_GOOGLE_CLIENT_SECRET: ${OAUTH_GOOGLE_CLIENT_SECRET:-}
+      OAUTH_GITHUB_CLIENT_ID: ${OAUTH_GITHUB_CLIENT_ID:-}
+      OAUTH_GITHUB_CLIENT_SECRET: ${OAUTH_GITHUB_CLIENT_SECRET:-}
       APP_ENV: production
       EVOLVYN_VAULT_KEY_FILE: /run/evolvyn-secrets/vault.key
       HTTP_PROXY: ${HTTP_PROXY:-}

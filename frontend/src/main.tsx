@@ -754,13 +754,7 @@ function App() {
                       </strong>
                       <span>From requirements to a working starter</span>
                     </button>
-                    <button
-                      onClick={() =>
-                        setText(
-                          "Analyze my funnel and identify conversion opportunities.",
-                        )
-                      }
-                    >
+                    <button onClick={() => setStudio("growth")}>
                       <Activity size={22} />
                       <strong>
                         Grow your business <ArrowUpRight size={15} />

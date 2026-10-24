@@ -4,6 +4,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 COPY requirements.lock ./
 RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 COPY backend ./backend
+COPY frontend ./frontend
+COPY Dockerfile ./Dockerfile
+COPY scripts/container_start.py scripts/verify_local_model.py ./scripts/
 COPY sample-data ./sample-data
 COPY scripts/container_start.py scripts/verify_local_model.py ./
 RUN useradd --create-home --uid 10001 evolvyn && chown -R evolvyn:evolvyn /app

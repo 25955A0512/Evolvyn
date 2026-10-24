@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 export function AccountAccess({
   onAuthenticated,
 }: {
   onAuthenticated: (organizationId: string) => void;
 }) {
+  const [providers, setProviders] = useState<any[]>([]);
+  useEffect(() => {
+    fetch("/api/auth/providers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setProviders)
+      .catch(() => {});
+  }, []);
   const [register, setRegister] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -23,6 +30,17 @@ export function AccountAccess({
           Create account
         </button>
       </div>
+      {providers.some((p) => p.enabled) && (
+        <div className="oauth-providers">
+          {providers
+            .filter((p) => p.enabled)
+            .map((p) => (
+              <a className="oauth-provider" key={p.id} href={p.start_url}>
+                Continue with {p.name}
+              </a>
+            ))}
+        </div>
+      )}
       <form
         onSubmit={async (e) => {
           e.preventDefault();
