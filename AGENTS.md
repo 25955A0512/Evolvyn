@@ -62,3 +62,7 @@ python3 tests/e2e_commerce.py
 ```
 
 Run environment-dependent end-to-end tests only when their required services and `EVOLVYN_TEST_URL` are available. Report skipped checks accurately. Never expose private values from `.local/` or environment files.
+
+
+## Full product requirements
+Before coding, audit the current app and map requirements to working/partial/missing/blocked. Treat requirements as acceptance criteria, not proof of implementation. Deliver tested end-to-end features; never fake integrations or claim unrun checks passed. See `docs/PRODUCT_REQUIREMENTS.md` for expanded requirements covering Google/GitHub OAuth, workspace/team roles (read/edit/agent discussion), tenant isolation, Product Studio (PRD DOCX, architecture/workflows, code generation, isolated tests and live preview), extensible MCP/tool registry, durable background monitoring, feedback-loop evaluation, deterministic governance, security testing, interactive UX, and cloud release readiness. Prioritize auth/tenant isolation and sandbox safety, then GitHub MCP, one durable monitor, and one complete idea-to-preview workflow. Reuse LangGraph and the existing harness unless a proven gap requires change. If time prevents full delivery, report unfinished items honestly.
