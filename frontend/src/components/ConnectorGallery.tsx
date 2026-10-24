@@ -141,10 +141,12 @@ export function ConnectorGallery({
   servers,
   onConfigure,
   onBundled,
+  busy = false,
 }: {
   servers: any[];
   onConfigure: (name: string) => void;
   onBundled: (name: string, profile: string) => void;
+  busy?: boolean;
 }) {
   const [query, setQuery] = useState(""),
     [category, setCategory] = useState("All");
@@ -203,6 +205,7 @@ export function ConnectorGallery({
               </div>
               <button
                 aria-label={"Configure " + r.name}
+                disabled={busy}
                 onClick={() =>
                   r.profile ? onBundled(r.name, r.profile) : onConfigure(r.name)
                 }

@@ -1,4 +1,4 @@
-import { ConnectorArt } from "./ConnectorGallery";
+import { ConnectorArt, ConnectorGallery } from "./ConnectorGallery";
 import { UiIcon } from "./UiIcon";
 import { useEffect, useState } from "react";
 import {
@@ -642,52 +642,286 @@ function MemoryPanel({
     </div>
   );
 }
-function AgentCatalog({ api }: { api: API }) {
+function AgentCatalog({
+  api,
+  conversation,
+  projectId,
+  businessId,
+  initialAgent,
+  onNavigate,
+}: {
+  api: API;
+  conversation: Convo | null;
+  projectId: string;
+  businessId: string;
+  initialAgent?: string;
+  onNavigate?: (id: string) => void;
+}) {
   const [rows, setRows] = useState<any[]>([]),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [search, setSearch] = useState(""),
+    [category, setCategory] = useState("All"),
+    [chosen, setChosen] = useState(initialAgent || ""),
+    [creating, setCreating] = useState(false),
+    [goal, setGoal] = useState(""),
+    [route, setRoute] = useState("default"),
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState(""),
+    [convos, setConvos] = useState<any[]>([]),
+    [convId, setConvId] = useState(conversation?.id || "");
   async function load() {
-    setRows(await api.json("/agents"));
+    const [agents, conversations] = await Promise.all([
+      api.json("/agents"),
+      api.json("/conversations"),
+    ]);
+    setRows(agents);
+    setConvos(conversations);
   }
   useEffect(() => {
     load().catch((e) => setError(e.message));
   }, []);
+  const group = (a: any) =>
+    !a.builtin
+      ? "Custom"
+      : ["architect", "developer", "reviewer"].includes(a.agent)
+        ? "Development"
+        : "Business";
+  const selected = rows.find((a) => a.agent === chosen),
+    context = convos.find((c) => c.id === convId);
   return (
     <div className="studio-page">
       <div className="studio-page-title">
-        <span className="eyebrow">COMPOSABLE AGENTS</span>
+        <span className="eyebrow">COMPOSABLE AGENTS / SKILLS</span>
         <h1>Specialists with a shared purpose.</h1>
         <p>
           Distinct role contracts, model routes and capability boundaries.
           Compose specialists into execution graphs in the Agent control center.
         </p>
       </div>
-      {error && <p className="error">{error}</p>}
-      <div className="agent-catalog">
-        {rows.map((a) => (
-          <article className="studio-card" key={a.agent}>
-            <span className="studio-icon">
-              <Users size={19} />
-            </span>
-            <h3>{a.name}</h3>
-            <p>{a.goal}</p>
-            <div className="agent-catalog-meta">
-              <span>{a.builtin ? "Built-in role" : "Custom role"}</span>
-              <span>
-                {a.route.provider} ·{" "}
-                {a.route.agent === "default"
-                  ? "default route"
-                  : "agent override"}
-              </span>
-              <span>{a.output_tokens} output-token limit</span>
-            </div>
-            {!!a.allowed_tools?.length && (
-              <small>Capabilities: {a.allowed_tools.join(", ")}</small>
-            )}
-          </article>
+      <div className="capability-toolbar">
+        <label>
+          <UiIcon name="search" />
+          <input
+            aria-label="Search agent capabilities"
+            placeholder="Search skills, roles and tools"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <button onClick={() => setCreating(!creating)}>
+          <Plus size={17} />
+          Create specialist
+        </button>
+      </div>
+      <div className="connector-filters">
+        {["All", "Business", "Development", "Custom"].map((c) => (
+          <button
+            key={c}
+            className={category === c ? "selected" : ""}
+            onClick={() => setCategory(c)}
+          >
+            {c}
+          </button>
         ))}
+      </div>
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && <p role="status">{notice}</p>}
+      {selected && (
+        <form
+          className="studio-card capability-run-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            setBusy(true);
+            setError("");
+            try {
+              const planned = await api.json("/harness/plan", {
+                method: "POST",
+                body: JSON.stringify({
+                  conversation_id: convId,
+                  goal,
+                  mode: route,
+                }),
+              });
+              const definition = {
+                ...planned.definition,
+                name: (selected.name + " · " + goal).slice(0, 100),
+                nodes: [
+                  ...planned.definition.nodes
+                    .filter((n: any) => ["evidence", "explain"].includes(n.id))
+                    .map((n: any) =>
+                      n.id === "explain"
+                        ? { ...n, agent_id: selected.agent }
+                        : n,
+                    ),
+                  {
+                    id: "result",
+                    type: "result",
+                    arguments: { value: { $ref: "nodes.explain.output" } },
+                  },
+                ],
+                edges: [
+                  { source: "evidence", target: "explain" },
+                  { source: "explain", target: "result" },
+                ],
+              };
+              const graph = await api.json("/harness/graphs", {
+                method: "POST",
+                body: JSON.stringify(definition),
+              });
+              const run = await api.json(
+                "/harness/graphs/" + graph.id + "/run",
+                {
+                  method: "POST",
+                  body: JSON.stringify({ conversation_id: convId }),
+                },
+              );
+              setNotice(
+                "Execution " + run.id + " queued through the shared harness.",
+              );
+              onNavigate?.(convId);
+            } catch (e: any) {
+              setError(e.message);
+            } finally {
+              setBusy(false);
+            }
+          }}
+        >
+          <div className="studio-card-heading">
+            <h3>Use {selected.name}</h3>
+            <button type="button" onClick={() => setChosen("")}>
+              Close
+            </button>
+          </div>
+          <label>
+            Evidence conversation
+            <select
+              aria-label="Capability conversation"
+              value={convId}
+              required
+              onChange={(e) => setConvId(e.target.value)}
+            >
+              <option value="">Choose conversation</option>
+              {convos
+                .filter(
+                  (c) =>
+                    c.project_id === (projectId || null) &&
+                    (!businessId || c.business_id === businessId),
+                )
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.title}
+                  </option>
+                ))}
+            </select>
+          </label>
+          <label>
+            Your question
+            <textarea
+              aria-label="Capability question"
+              value={goal}
+              onChange={(e) => setGoal(e.target.value)}
+              minLength={3}
+              maxLength={2000}
+              required
+            />
+          </label>
+          <label>
+            Model route
+            <select
+              aria-label="Capability model route"
+              value={route}
+              onChange={(e) => setRoute(e.target.value)}
+            >
+              <option value="default">Workspace vault / per-agent route</option>
+              <option value="local">Local model</option>
+              <option value="evidence">
+                Explicit evidence only · no model
+              </option>
+            </select>
+          </label>
+          <p>
+            Reads authorized evidence, then invokes this role through the
+            existing bounded graph. It does not publish, spend or grant tool
+            approvals.
+          </p>
+          {!context?.files.length && (
+            <p>
+              Upload evidence in the selected conversation before running this
+              capability.
+            </p>
+          )}
+          <button
+            className="studio-primary"
+            disabled={busy || !context?.files.length}
+          >
+            Run capability
+          </button>
+        </form>
+      )}
+      <div className="agent-catalog">
+        {rows
+          .filter(
+            (a) =>
+              (category === "All" || group(a) === category) &&
+              (a.name + " " + a.goal + " " + a.allowed_tools.join(" "))
+                .toLowerCase()
+                .includes(search.toLowerCase()),
+          )
+          .map((a) => (
+            <article className="studio-card" key={a.agent}>
+              <div
+                className={"capability-cover cover-" + group(a).toLowerCase()}
+                aria-hidden="true"
+              >
+                <UiIcon
+                  name={
+                    group(a) === "Development"
+                      ? "code"
+                      : a.agent === "marketing_analyst"
+                        ? "chart-line"
+                        : "brain"
+                  }
+                  size={38}
+                />
+                <span>{group(a)}</span>
+              </div>
+              <h3>{a.name}</h3>
+              <p>{a.goal}</p>
+              <div className="agent-catalog-meta">
+                <span>{a.builtin ? "Built-in role" : "Custom role"}</span>
+                <span>
+                  {a.route.provider} ·{" "}
+                  {a.route.agent === "default"
+                    ? "default route"
+                    : "agent override"}
+                </span>
+                <span>{a.output_tokens} output-token limit</span>
+              </div>
+              {!!a.allowed_tools?.length && (
+                <small>Capabilities: {a.allowed_tools.join(", ")}</small>
+              )}
+              <button
+                className="capability-use"
+                onClick={() => {
+                  setChosen(a.agent);
+                  setNotice("");
+                  document
+                    .querySelector(".studio-scroll")
+                    ?.scrollTo({ top: 0, behavior: "smooth" });
+                }}
+              >
+                Use skill <ArrowRight size={15} />
+              </button>
+            </article>
+          ))}
       </div>
       <form
         className="studio-card studio-form custom-agent-form"
+        hidden={!creating}
         onSubmit={async (e) => {
           e.preventDefault();
           const form = e.currentTarget;
@@ -708,6 +942,8 @@ function AgentCatalog({ api }: { api: API }) {
             });
             form.reset();
             await load();
+            setCreating(false);
+            setNotice("Specialist registered in the shared agent catalog.");
           } catch (e: any) {
             setError(e.message);
           }
@@ -753,14 +989,19 @@ function Integrations({
   const [servers, setServers] = useState<any[]>([]),
     [tools, setTools] = useState<any[]>([]),
     [query, setQuery] = useState(""),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    [notice, setNotice] = useState("");
+  async function load() {
+    const [a, b] = await Promise.all([
+      api.json("/mcp/servers"),
+      api.json("/tool-registry"),
+    ]);
+    setServers(a);
+    setTools(b);
+  }
   useEffect(() => {
-    Promise.all([api.json("/mcp/servers"), api.json("/tool-registry")])
-      .then(([a, b]) => {
-        setServers(a);
-        setTools(b);
-      })
-      .catch((e) => setError(e.message));
+    load().catch((e) => setError(e.message));
   }, []);
   return (
     <div className="studio-page">
@@ -778,6 +1019,38 @@ function Integrations({
         </p>
       </div>
       {error && <p className="error">{error}</p>}
+      {notice && <p role="status">{notice}</p>}
+      <ConnectorGallery
+        servers={servers}
+        busy={busy}
+        onConfigure={(name) => onManage("servers", name)}
+        onBundled={async (name, profile) => {
+          if (busy) return;
+          setBusy(true);
+          setError("");
+          setNotice("");
+          try {
+            const row =
+              servers.find((s) => s.profile === profile) ||
+              (await api.json("/mcp/servers", {
+                method: "POST",
+                body: JSON.stringify({ name, profile, transport: "stdio" }),
+              }));
+            await api.json("/mcp/servers/" + row.id + "/probe", {
+              method: "POST",
+            });
+            await load();
+            setNotice(
+              "Connection checked. The card shows its actual discovery status.",
+            );
+          } catch (e: any) {
+            setError(e.message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+      <h3 className="studio-subtitle">Your registered connections & tools</h3>
       <label className="integration-search">
         <Search size={18} />
         <input
@@ -858,6 +1131,8 @@ function FileTextIcon() {
 export function AgentWorkspace({
   api,
   initialTab,
+  initialAgent,
+  onSettings,
   conversation,
   projectId,
   businessId,
@@ -868,6 +1143,8 @@ export function AgentWorkspace({
 }: {
   api: API;
   initialTab: StudioTab;
+  initialAgent?: string;
+  onSettings?: () => void;
   onNavigate?: (id: string) => void;
   conversation: Convo | null;
   projectId: string;
@@ -877,6 +1154,7 @@ export function AgentWorkspace({
   onManage: ManageConnections;
 }) {
   const [tab, setTab] = useState<StudioTab>(initialTab);
+  useEffect(() => setTab(initialTab), [initialTab]);
   const tabs = [
     { id: "build", name: "Build a product", icon: Code2 },
     { id: "growth", name: "Growth insights", icon: Brain },
@@ -940,6 +1218,12 @@ export function AgentWorkspace({
           <button onClick={() => onManage()}>
             Agent control center <ArrowRight size={13} />
           </button>
+          {onSettings && (
+            <button onClick={onSettings}>
+              <UiIcon name="layout-dashboard" size={16} />
+              Workspace settings
+            </button>
+          )}
         </div>
       </aside>
       <main className="studio-content">
@@ -993,7 +1277,16 @@ export function AgentWorkspace({
               onRefresh={onRefresh}
             />
           )}{" "}
-          {tab === "agents" && <AgentCatalog api={api} />}{" "}
+          {tab === "agents" && (
+            <AgentCatalog
+              api={api}
+              conversation={conversation}
+              projectId={projectId}
+              businessId={businessId}
+              initialAgent={initialAgent}
+              onNavigate={onNavigate}
+            />
+          )}{" "}
           {tab === "memory" && (
             <MemoryPanel
               api={api}

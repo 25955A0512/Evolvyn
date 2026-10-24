@@ -49,9 +49,10 @@ with sync_playwright() as p:
  page.get_by_role('button',name='Close workspace panel',exact=True).click()
  page.get_by_role('button',name='Approve & create brief').wait_for(timeout=30000)
  assert page.locator('.recommendations').last.locator('.recommendation').count()==1
+ page.get_by_label('Open account menu',exact=True).click()
  page.get_by_role('button',name='Account & team',exact=True).click()
  page.get_by_role('heading',name='Account & team',exact=True).wait_for()
- page.get_by_text(email,exact=True).first.wait_for()
+ page.get_by_role('dialog',name='Workspace settings',exact=True).get_by_text(email,exact=True).first.wait_for()
  page.screenshot(path='/workspace/Evolvyn/.local/validation/account-team.png',full_page=True)
  assert not errors,errors
  print('Browser account registration, organization session, private upload/analysis/approval, refresh, team panel: PASS')

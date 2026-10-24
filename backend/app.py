@@ -948,3 +948,6 @@ install_platform_help(app,auth,get,save,listing,POLICY)
 from backend.automations import Automations,install as install_automations
 AUTOMATIONS=Automations({name:globals()[name] for name in ("get","save","listing","conn","POLICY","launch","Message")})
 install_automations(app,auth,AUTOMATIONS)
+
+from backend.account_preferences import install as install_account_preferences
+install_account_preferences(app,conn,auth)

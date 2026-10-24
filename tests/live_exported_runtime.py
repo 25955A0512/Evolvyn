@@ -45,6 +45,9 @@ try:
             runtime=c.get('/api/runtime').json();assert len(runtime['components'])==9
             assert c.get('/api/canvas').json()==[] and c.get('/api/growth/reports').json()==[]
             assert c.get('/api/vault').json()['credentials']==[]
+            assert c.get('/api/account/preferences').json()['theme']=='system'
+            response=c.put('/api/account/preferences',json={'theme':'dark','text_size':'large'})
+            assert response.status_code==200 and c.get('/api/account/preferences').json()['text_size']=='large'
             assert c.get('/api/auth/providers').json()[0]['enabled'] is False
             server=c.post('/api/mcp/servers',json={'name':'Exported evidence','profile':'evidence_utilities'}).json()
             response=c.post('/api/mcp/servers/'+server['id']+'/probe');assert response.status_code==200 and response.json()['status']=='healthy',response.text

@@ -213,7 +213,11 @@ class GraphHarness:
                         with model_scope(owner,node.agent_id):
                             selected_mode=effective_mode(node.mode)
                             s['POLICY'].data(owner,conversation,selected_mode)
-                            reserve=0 if selected_mode=='evidence' else min(512 if selected_mode=='local' else 700,definition.max_output_tokens-cp['tokens_reserved'])
+                            if selected_mode!='evidence':
+                                from backend.providers import provider_config
+                                provider_config(selected_mode)
+                            role_limit=s['AGENTS'].definition(owner,node.agent_id)['output_tokens'] if s.get('AGENTS') else 700
+                            reserve=0 if selected_mode=='evidence' else min(role_limit,512 if selected_mode=='local' else 700,definition.max_output_tokens-cp['tokens_reserved'])
                             if selected_mode!='evidence' and reserve<1:raise ValueError('Model output-token budget exhausted')
                             report=arguments.get('report')
                             if not isinstance(report,dict) or 'facts' not in report or 'evidence' not in report:

@@ -37,6 +37,7 @@ def initialize(c):
     c.execute('CREATE TABLE IF NOT EXISTS account_sessions (digest text PRIMARY KEY,account_id text REFERENCES accounts(id),organization_id text REFERENCES organizations(id),expires timestamptz NOT NULL)')
     c.execute('CREATE TABLE IF NOT EXISTS oauth_identities (provider text NOT NULL,subject text NOT NULL,account_id text NOT NULL REFERENCES accounts(id),PRIMARY KEY(provider,subject))')
     c.execute('CREATE TABLE IF NOT EXISTS oauth_states (digest text PRIMARY KEY,provider text NOT NULL,verifier text NOT NULL,browser_digest text NOT NULL,link_account text REFERENCES accounts(id),expires timestamptz NOT NULL)')
+    c.execute('CREATE TABLE IF NOT EXISTS account_preferences (account_id text PRIMARY KEY REFERENCES accounts(id),body jsonb NOT NULL)')
 
 
 def password_hash(password,salt=None):
@@ -67,7 +68,8 @@ def resolve(request,authorization,organization,conn):
         allowed=set(os.getenv('PUBLIC_ORIGIN',str(request.base_url).rstrip('/')).split(','))
         if os.getenv('APP_ENV','development')!='production':allowed.update({'http://127.0.0.1:5173','http://localhost:5173'})
         if origin and origin not in allowed:raise HTTPException(403,'Cross-origin request denied')
-        if role=='viewer':raise HTTPException(403,'Viewer access is read-only')
+        personal_preference=request.url.path=='/api/account/preferences' and request.method=='PUT'
+        if role=='viewer' and not personal_preference:raise HTTPException(403,'Viewer access is read-only')
         if role=='editor' and (request.url.path.endswith('/decision') or '/members' in request.url.path or request.url.path.startswith('/api/organizations')):
             raise HTTPException(403,'An organization administrator must approve this action')
     request.state.identity={'account_id':session['account_id'],'organization_id':org,'role':role}

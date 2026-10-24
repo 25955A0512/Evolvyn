@@ -15,6 +15,8 @@ The existing React/FastAPI/PostgreSQL architecture, approvals and execution path
 
 Both `https://www.figma.com/community/icons?resource_type=files` and `https://manus.im/app` were blocked by the execution environment's network proxy. No live signed-in Manus inspection or direct Figma Community download is claimed. Icons were downloaded from the official Tabler distribution instead. The uploaded recording could not be transferred because it exceeds the tool's 32 MiB file limit; it was not viewed. Screenshots already supplied in the conversation were used as reference. A shorter recording remains useful for further interaction review.
 
+Subsequently, two smaller recordings were successfully transferred and visually reviewed. Their working interaction patterns are implemented in the [recording-driven update](REFERENCE_INTERACTIONS.md).
+
 ## Verify
 
 ```bash

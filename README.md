@@ -164,6 +164,8 @@ See [agent visibility, platform help and Canvas automations](docs/EXPERIENCE_UPD
 
 The [workspace visual refresh](docs/VISUAL_WORKSPACE.md) adds supplied connector/provider logos, locally hosted licensed icons, illustrated entry cards and a contextual composer menu while keeping the existing agent execution and approval workflows.
 
+The [recording-driven interaction update](docs/REFERENCE_INTERACTIONS.md) adds persistent account appearance preferences, nested context menus, runnable agent capabilities and the shared connector gallery inside Integrations.
+
 ```bash
 .venv/bin/python -m pytest -q
 npm --prefix frontend run build
@@ -174,6 +176,7 @@ python3 tests/e2e_evolution.py
 python3 tests/e2e_commerce.py
 python3 tests/e2e_experience.py
 python3 tests/e2e_visual_workspace.py
+python3 tests/e2e_reference_interactions.py
 .venv/bin/python tests/live_exported_runtime.py
 bash scripts/backup.sh
 ```

@@ -17,6 +17,12 @@ import {
   Brain,
   KeyRound,
 } from "lucide-react";
+import {
+  ProfileMenu,
+  WorkspaceSettings,
+  useWorkspacePreferences,
+  playCompletionTone,
+} from "./components/WorkspaceSettings";
 import { PlatformHelp } from "./components/PlatformHelp";
 import { UiIcon, WorkspaceArtwork } from "./components/UiIcon";
 import { ComposerActions } from "./components/ComposerActions";
@@ -40,6 +46,7 @@ import "@fontsource/manrope/600.css";
 import "@fontsource/manrope/800.css";
 import "./style.css";
 import "./workspace-refresh.css";
+import "./reference-interactions.css";
 function App() {
   const [token, setToken] = useState(
     sessionStorage.getItem("evolvyn-token") || "",
@@ -77,13 +84,20 @@ function App() {
     outcome: string;
   } | null>(null);
   const [controlCenter, setControlCenter] = useState(false);
+  const [controlServerName, setControlServerName] = useState<
+    string | undefined
+  >();
   const [controlTab, setControlTab] = useState<"servers" | "tools">("servers");
   const [contextTools, setContextTools] = useState<ContextCall[]>([]);
   const [publicResearch, setPublicResearch] = useState(false);
   const [marketQuery, setMarketQuery] = useState("");
   const uploadInput = useRef<HTMLInputElement>(null);
-  function manageConnections(tab: "servers" | "tools" = "servers") {
+  function manageConnections(
+    tab: "servers" | "tools" = "servers",
+    serverName?: string,
+  ) {
     setControlTab(tab);
+    setControlServerName(serverName);
     setControlCenter(true);
   }
   const [studio, setStudio] = useState<StudioTab | null>(null);
@@ -113,7 +127,7 @@ function App() {
   const [providerStatus, setProviderStatus] = useState("");
   const [identity, setIdentity] = useState<{
     role: string;
-    account: { email: string } | null;
+    account: { id: string; name: string; email: string } | null;
     organizations: { id: string; name: string; role: string }[];
   } | null>(null);
   const [organization, setOrganization] = useState(
@@ -133,8 +147,21 @@ function App() {
   const selected = useRef<string | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const api = client(token);
+  const preferences = useWorkspacePreferences(api, identity?.account?.id);
+  const preferencesRef = useRef(preferences.prefs);
+  preferencesRef.current = preferences.prefs;
+  const observedActive = useRef(new Set<string>());
+  const [preferencesTab, setPreferencesTab] = useState<
+    "general" | "account" | null
+  >(null);
+  const [selectedCapability, setSelectedCapability] = useState<
+    string | undefined
+  >();
   const handleError = (e: unknown) =>
     setError(e instanceof Error ? e.message : String(e));
+  useEffect(() => {
+    if (studio !== "agents") setSelectedCapability(undefined);
+  }, [studio]);
   async function reload() {
     setList(await api.json("/conversations"));
   }
@@ -147,8 +174,33 @@ function App() {
         id,
         (r: Run) => {
           setRuns((prev) => ({ ...prev, [r.id]: r }));
-          if (["CREATED", "RUNNING"].includes(r.state)) setActive(id);
-          else {
+          if (["CREATED", "RUNNING"].includes(r.state)) {
+            observedActive.current.add(id);
+            setActive(id);
+          } else {
+            if (observedActive.current.delete(id)) {
+              const p = preferencesRef.current;
+              if (p.sound) {
+                try {
+                  playCompletionTone();
+                } catch {}
+              }
+              if (
+                p.browser_notifications &&
+                "Notification" in window &&
+                Notification.permission === "granted" &&
+                document.visibilityState === "hidden"
+              ) {
+                try {
+                  new Notification("Evolvyn task update", {
+                    body:
+                      r.state === "WAITING_FOR_APPROVAL"
+                        ? "A task needs your review."
+                        : "A task has finished. Open your workspace to review its status.",
+                  });
+                } catch {}
+              }
+            }
             setActive((prev) => (prev === id ? null : prev));
             if (selected.current) refresh(selected.current).catch(handleError);
           }
@@ -267,6 +319,7 @@ function App() {
       });
       setRuns((prev) => ({ ...prev, [r.id]: r }));
       setActive(r.id);
+      observedActive.current.add(r.id);
       setText("");
       document
         .querySelectorAll<HTMLDetailsElement>(".composer details[open]")
@@ -680,9 +733,13 @@ function App() {
             </nav>
           </div>
           <div className="aside-bottom">
-            <button onClick={() => setPanel("account")}>Account & team</button>
-            <button
-              onClick={async () => {
+            <ProfileMenu
+              name={identity?.account?.name || "My workspace"}
+              email={identity?.account?.email}
+              role={identity?.role || "demo"}
+              onSettings={() => setPreferencesTab("general")}
+              onAccount={() => setPreferencesTab("account")}
+              onConnections={async () => {
                 try {
                   setIntegrations(await api.json("/integrations"));
                   setProviders(await api.json("/providers"));
@@ -692,11 +749,7 @@ function App() {
                   handleError(e);
                 }
               }}
-            >
-              <Plug size={16} /> Integrations & models
-            </button>
-            <button
-              onClick={async () => {
+              onSignOut={async () => {
                 if (token === "cookie")
                   await api
                     .json("/auth/logout", { method: "POST" })
@@ -708,10 +761,7 @@ function App() {
                 watches.current.forEach((c) => c.abort());
                 setToken("");
               }}
-            >
-              <LogOut size={16} /> Lock workspace
-            </button>
-            <small>Development edition · Evidence first</small>
+            />
           </div>
         </aside>
       )}
@@ -955,7 +1005,7 @@ function App() {
                 {latestRun.state === "WAITING_FOR_APPROVAL"
                   ? "Analysis ready · review your proposed action"
                   : latestRun.state === "COMPLETED"
-                    ? "Action completed · result saved"
+                    ? "Run completed · result saved"
                     : latestRun.state === "FAILED"
                       ? "Run stopped · see the error"
                       : latestRun.state === "CANCELLED"
@@ -1081,6 +1131,20 @@ function App() {
                   onBuild={() => setStudio("build")}
                   onCanvas={() => setStudio("canvas")}
                   onReports={() => setPanel("reports")}
+                  api={api}
+                  conversations={(current
+                    ? [current, ...list.filter((c) => c.id !== current.id)]
+                    : list
+                  ).filter(
+                    (c) =>
+                      (!business || c.business_id === business) &&
+                      (!project || c.project_id === project),
+                  )}
+                  onOpenConversation={(id) => open(id).catch(handleError)}
+                  onAgents={(id) => {
+                    setSelectedCapability(id);
+                    setStudio("agents");
+                  }}
                 />
                 <label
                   className="upload direct-upload"
@@ -1168,6 +1232,8 @@ function App() {
           key={organization}
           api={api}
           initialTab={studio}
+          initialAgent={selectedCapability}
+          onSettings={() => setPreferencesTab("general")}
           onNavigate={(id) => {
             setStudio(null);
             open(id).catch(handleError);
@@ -1187,9 +1253,21 @@ function App() {
           onManage={manageConnections}
         />
       )}
+      {preferencesTab && (
+        <WorkspaceSettings
+          api={api}
+          initialTab={preferencesTab}
+          preferences={preferences}
+          onClose={() => setPreferencesTab(null)}
+          onConnections={() => manageConnections()}
+          onVault={() => setStudio("vault")}
+          onAgents={() => setStudio("agents")}
+        />
+      )}
       {controlCenter && (
         <AgentControlCenter
           initialTab={controlTab}
+          initialServerName={controlServerName}
           api={api}
           conversation={current}
           onClose={() => setControlCenter(false)}

@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { Plug, RefreshCw } from "lucide-react";
 import type { client } from "../api";
-export type ManageConnections = (tab?: "servers" | "tools") => void;
+export type ManageConnections = (
+  tab?: "servers" | "tools",
+  serverName?: string,
+) => void;
 export type ContextCall = { name: string; arguments: Record<string, unknown> };
 export function parseCalls(value: string): ContextCall[] {
   try {

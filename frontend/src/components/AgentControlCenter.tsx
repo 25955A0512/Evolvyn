@@ -22,12 +22,14 @@ export function AgentControlCenter({
   onClose,
   onRefresh,
   initialTab = "servers",
+  initialServerName,
 }: {
   api: ReturnType<typeof client>;
   conversation: Convo | null;
   onClose: () => void;
   onRefresh: () => void;
   initialTab?: Tab;
+  initialServerName?: string;
 }) {
   const [tab, setTab] = useState<Tab>(initialTab);
   const [servers, setServers] = useState<any[]>([]);
@@ -57,6 +59,23 @@ export function AgentControlCenter({
   const [argumentsText, setArgumentsText] = useState("{}");
   const [result, setResult] = useState<any>(null);
   const serverForm = useRef<HTMLFormElement | null>(null);
+  useEffect(() => {
+    if (!initialServerName) return;
+    setTransport("streamable_http");
+    const frame = requestAnimationFrame(() => {
+      serverForm.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+      const input =
+        serverForm.current?.querySelector<HTMLInputElement>("input[name=name]");
+      if (input) {
+        input.value = initialServerName;
+        input.focus();
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [initialServerName]);
   const [toolSearch, setToolSearch] = useState("");
   const watch = useRef<AbortController | null>(null);
   const fail = (e: unknown) =>
@@ -283,6 +302,7 @@ export function AgentControlCenter({
                   </p>
                 </div>
                 <ConnectorGallery
+                  busy={busy}
                   servers={servers}
                   onConfigure={(name) => {
                     setTransport("streamable_http");

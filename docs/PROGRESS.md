@@ -1,4 +1,6 @@
 # Implementation checklist
+
+Latest interaction update: **145 automated tests pass**. Both supplied smaller recordings were reviewed. The existing agent catalog now supports searched capability selection and real bounded execution; account preferences persist with account isolation; searched recent conversations/evidence, native settings dialogs and the shared connector gallery are integrated. See [REFERENCE_INTERACTIONS.md](REFERENCE_INTERACTIONS.md) for the concrete behavior and checks. Existing cloud/provider launch limits below still apply.
 - [x] FastAPI, React/TypeScript, PostgreSQL; reproducible locked dependency installation.
 - [x] Private single-owner workspace token; persisted business profiles and goals.
 - [x] Saved conversations, file references, decisions and internal artifacts.
