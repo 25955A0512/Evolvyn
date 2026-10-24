@@ -5,7 +5,7 @@ import json
 def bundle(root=None):
     root=root or Path(__file__).resolve().parents[1]
     paths=[]
-    for folder,patterns in [('backend',('*.py','template_assets/package*.json','template_assets/node-api/package*.json')),('frontend',('src/**/*.tsx','src/**/*.ts','src/**/*.css','public/assets/tabler/*.svg','public/assets/tabler/LICENSE.txt','public/assets/tabler/manifest.json','package.json','package-lock.json','tsconfig.json','vite.config.js','index.html','Dockerfile','nginx.conf')),('sample-data',('*.txt','*.csv',))]:
+    for folder,patterns in [('backend',('*.py','template_assets/package*.json','template_assets/node-api/package*.json')),('frontend',('src/**/*.tsx','src/**/*.ts','src/**/*.css','public/assets/tabler/*.svg','public/assets/tabler/LICENSE.txt','public/assets/tabler/manifest.json','package.json','package-lock.json','tsconfig.json','vite.config.js','index.html','Dockerfile','nginx.conf')),('compiler',('*.mjs','Dockerfile')),('sample-data',('*.txt','*.csv',))]:
         for pattern in patterns:paths.extend((root/folder).glob(pattern))
     for name in ('requirements.lock','scripts/container_start.py','scripts/verify_local_model.py'):
         paths.append(root/name)
@@ -35,6 +35,8 @@ else:
    if not any(line.startswith(key+'=') for line in text.splitlines()):stream.write('\\n'+key+'='+secrets.token_urlsafe(32)+'\\n')
 if not any(line.startswith('AGENT_SESSION_COOKIE=') for line in target.read_text().splitlines()):
  with target.open('a') as stream:stream.write('\\nAGENT_SESSION_COOKIE=evolvyn_agent_'+secrets.token_hex(8)+'\\n')
+if not any(line.startswith('AGENT_COMPILER_TOKEN=') for line in target.read_text().splitlines()):
+ with target.open('a') as stream:stream.write('\\nAGENT_COMPILER_TOKEN='+secrets.token_urlsafe(32)+'\\n')
 vault=root/'evolvyn/.local/vault.key'
 vault.parent.mkdir(parents=True,exist_ok=True)
 if not vault.exists():
@@ -81,7 +83,7 @@ SERVICES='''  agents_db:
             with os.fdopen(fd,'wb') as stream: stream.write(source)
         os.chown(target,10001,10001);target.chmod(0o600)
   agents_api:
-    networks: [agent_private]
+    networks: [agent_private, agent_compiler]
     build: ./evolvyn
     environment:
       OAUTH_GOOGLE_CLIENT_ID: ${AGENT_OAUTH_GOOGLE_CLIENT_ID:-}
@@ -89,6 +91,8 @@ SERVICES='''  agents_db:
       OAUTH_GITHUB_CLIENT_ID: ${AGENT_OAUTH_GITHUB_CLIENT_ID:-}
       OAUTH_GITHUB_CLIENT_SECRET: ${AGENT_OAUTH_GITHUB_CLIENT_SECRET:-}
       APP_ENV: production
+      EVOLVYN_COMPILER_URL: http://agents_compiler:8070
+      EVOLVYN_COMPILER_TOKEN: ${AGENT_COMPILER_TOKEN:?Run python scripts/prepare_product.py}
       DATABASE_URL: postgresql://evolvyn:${AGENT_POSTGRES_PASSWORD}@agents_db:5432/evolvyn
       EVOLVYN_ACCESS_TOKEN: ${AGENT_ACCESS_TOKEN:?Run python scripts/prepare_product.py}
       EVOLVYN_SESSION_COOKIE: ${AGENT_SESSION_COOKIE:?Run python scripts/prepare_product.py}
@@ -111,6 +115,20 @@ SERVICES='''  agents_db:
     ports: [127.0.0.1:3001:80]
     depends_on:
       agents_api: {condition: service_healthy}
+  agents_compiler:
+    networks: [agent_compiler]
+    build:
+      context: ./evolvyn
+      dockerfile: compiler/Dockerfile
+    environment:
+      EVOLVYN_COMPILER_TOKEN: ${AGENT_COMPILER_TOKEN:?Run python scripts/prepare_product.py}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 64
 '''
 
 def attach(files):
@@ -118,7 +136,7 @@ def attach(files):
     files['.dockerignore']='.git\n.env\n**/.env\n**/.local\nevolvyn\n**/node_modules\n**/__pycache__\n**/dist\n*.db\n'
     files['compose.yaml']=files['compose.yaml'].replace('\n  db:\n','\n  db:\n    networks: [product_private]\n').replace('\n  app:\n','\n  app:\n    networks: [product_private]\n')
     files['compose.yaml']=files['compose.yaml'].replace('volumes:\n  product_database:\n',SERVICES+'volumes:\n  product_database:\n  agent_database:\n  agent_vault:\n')
-    files['compose.yaml']+='networks:\n  product_private:\n  agent_private:\n'
+    files['compose.yaml']+='networks:\n  product_private:\n  agent_private:\n  agent_compiler:\n    internal: true\n'
     files['.gitignore']+='evolvyn/.local/\n'
     files['.env.example']+='AGENT_SESSION_COOKIE=evolvyn_agent_replace_with_unique_name\n'
     files['.env.example']+='AGENT_POSTGRES_PASSWORD=replace-with-a-different-long-random-password\nAGENT_ACCESS_TOKEN=replace-with-a-long-random-token\nAGENT_OAUTH_GOOGLE_CLIENT_ID=\nAGENT_OAUTH_GOOGLE_CLIENT_SECRET=\nAGENT_OAUTH_GITHUB_CLIENT_ID=\nAGENT_OAUTH_GITHUB_CLIENT_SECRET=\n'

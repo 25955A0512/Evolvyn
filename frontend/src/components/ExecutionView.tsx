@@ -57,10 +57,15 @@ export function ExecutionView({
         ))}
         {active && (
           <button onClick={() => onCancel(run.id)}>
-            <Square size={13} /> Stop analysis
+            <Square size={13} /> {run.engine === "assistant_chat" ? "Stop reply" : "Stop analysis"}
           </button>
         )}
       </details>
+      {run.engine === "assistant_chat" && run.chat_result && (
+        <p className="muted">Model reply · {run.chat_result.usage?.provider || run.chat_result.mode}
+          {run.chat_result.usage?.model ? " · " + run.chat_result.usage.model : ""}
+        </p>
+      )}
       {!!run.report?.recommendations?.length && (
         <RecommendationCards
           items={run.report.recommendations}

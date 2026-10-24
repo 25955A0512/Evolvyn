@@ -112,7 +112,7 @@ async def test_provider_stream_adapter(monkeypatch):
     original=httpx.AsyncClient
     monkeypatch.setattr(providers.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
     chunks=[chunk async for chunk in providers.response_chunks({'facts':[],'evidence':[]},'Question',[{'role':'user','text':'Previous question'}])]
-    assert chunks==['Observed ','evidence.']
+    assert ''.join(chunks)=='Observed evidence.'
 
 @pytest.fixture
 def anyio_backend():return 'asyncio'
@@ -157,3 +157,17 @@ async def test_local_provider_needs_no_key_and_tracks_reported_usage(monkeypatch
     output=''.join([chunk async for chunk in providers.response_chunks(report,'question',[],mode='local')])
     assert output=='Local model response'
     assert report['usage']['total_tokens']==83 and report['usage']['cost_usd']==0
+
+@pytest.mark.anyio
+async def test_gateway_blocks_credentials_split_across_stream_chunks(monkeypatch):
+    key='private-reflection-key-for-test'
+    monkeypatch.setenv('MODEL_API_KEY',key)
+    async def handler(request):
+        payload=''.join('data: '+json.dumps({'choices':[{'delta':{'content':part}}]})+'\n\n' for part in [key[:12],key[12:]])
+        return httpx.Response(200,text=payload+'data: [DONE]\n\n')
+    original=httpx.AsyncClient
+    monkeypatch.setattr(providers.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
+    emitted=[]
+    with pytest.raises(ValueError):
+        async for chunk in providers.response_chunks({'facts':[],'evidence':[]},'hello',[],mode='provider'):emitted.append(chunk)
+    assert not emitted

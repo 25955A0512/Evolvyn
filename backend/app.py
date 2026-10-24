@@ -126,7 +126,7 @@ class Message(BaseModel):
     context_tools: list[ContextCall] = Field(default_factory=list,max_length=3)
     public_research: bool = False
     market_query: str = Field(default='',max_length=200)
-    analysis_kind: Literal['business','operations'] = 'business'
+    analysis_kind: Literal['auto','assistant','business','operations'] = 'business'
     text: str = Field(min_length=1, max_length=8000)
 
 class Decision(BaseModel):
@@ -408,6 +408,8 @@ def finish_message(owner,conversation,execution,text,report=None):
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(body),conversation))
 
 async def perform_job(owner,id,question,mode="provider",allow_fallback=False):
+    if get(owner,id,'execution').get('engine')=='assistant_chat':
+        await CHAT.run(owner,id);return
     if get(owner,id,'execution').get('engine')=='langgraph_discussion':
         await DISCUSSION.run(owner,id);return
     if get(owner,id,'execution').get('engine')=='graph':
@@ -555,8 +557,9 @@ async def launch(id:str,body:Message,owner=Depends(auth)):
         POLICY.data(owner,convo,'research')
         if body.public_research and len(body.market_query.strip())<3:raise HTTPException(422,'Enter an explicit public research query (3–200 characters)')
         reject_secrets(body.market_query)
-    # Preflight catches invalid evidence before creating a background execution.
-    analyze(scoped_documents(owner,convo),body.text)
+    chat=body.analysis_kind=='assistant' or (body.analysis_kind=='auto' and not convo.get('files') and not workflow and not body.public_research and not body.context_tools)
+    # General conversation is model-backed and does not require a sales upload.
+    if not chat:analyze(scoped_documents(owner,convo),body.text)
     if len(JOBS)>=4:raise HTTPException(429,'Four analyses are already running; wait for a slot')
     with conn() as c:
         row=c.execute('SELECT body FROM records WHERE id=%s AND owner=%s FOR UPDATE',(id,owner)).fetchone()
@@ -566,7 +569,9 @@ async def launch(id:str,body:Message,owner=Depends(auth)):
         execution_id=str(uuid4())
         execution={'conversation':id,'state':'CREATED','events':[],'output':'','question':body.text,'mode':body.mode,'allow_fallback':body.allow_fallback,'workflow':workflow,'context_tools':[v.model_dump() for v in body.context_tools],'public_research':body.public_research,'market_query':body.market_query,'analysis_kind':body.analysis_kind,'automation_event_id':__import__('backend.automations',fromlist=['EVENT']).EVENT.get(),'actor':POLICY.principal(owner).account,'report':None}
         c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(execution_id,owner,'execution',json.dumps(execution)))
-        convo['messages'] += [{'role':'user','text':body.text},{'role':'assistant','text':'Analysis in progress…','execution':execution_id}]
+        if chat:execution['engine']='assistant_chat'
+        c.execute('UPDATE records SET body=%s WHERE id=%s AND owner=%s',(json.dumps(execution),execution_id,owner))
+        convo['messages'] += [{'role':'user','text':body.text,'channel':'assistant_chat' if chat else 'analysis'},{'role':'assistant','text':'Model reply in progress…' if chat else 'Analysis in progress…','execution':execution_id,'channel':'assistant_chat' if chat else 'analysis'}]
         c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(convo),id))
     task=asyncio.create_task(perform_job(owner,execution_id,body.text,body.mode,body.allow_fallback))
     JOBS[execution_id]=task
@@ -951,3 +956,10 @@ install_automations(app,auth,AUTOMATIONS)
 
 from backend.account_preferences import install as install_account_preferences
 install_account_preferences(app,conn,auth)
+
+from backend.assistant_chat import AssistantChat
+CHAT=AssistantChat({name:globals()[name] for name in ('get','conn','claim_job','renew_lease','POLICY','AGENTS','change_execution','finish_message') }|{'stopping':lambda:STOPPING})
+
+from backend.product_agents import ProductAgents
+PRODUCT_AGENTS=ProductAgents({name:globals()[name] for name in ('get','save','conn','POLICY','REGISTRY','GRAPH_HARNESS','STUDIO')})
+PRODUCT_AGENTS.install(app,auth)

@@ -19,6 +19,7 @@ with sync_playwright() as p:
     page.screenshot(path=str(out/'studio-home.png'))
     page.locator('.home-actions').get_by_role('button',name=re.compile('^Build a product')).click()
     studio=page.locator('.agent-workspace')
+    studio.get_by_role('button',name='Guided form · no model',exact=True).click()
     studio.get_by_label('Product name',exact=True).fill('Northstar customer portal')
     studio.get_by_label('Product goal',exact=True).fill('A private workspace to track customer activation tasks')
     with page.expect_response(lambda r:r.url.endswith('/api/studio/products') and r.request.method=='POST') as response:
@@ -52,6 +53,7 @@ with sync_playwright() as p:
     page.reload()
     page.get_by_role('button',name='Build a product',exact=True).click()
     studio=page.locator('.agent-workspace')
+    studio.get_by_role('button',name='Guided form · no model',exact=True).click()
     studio.get_by_label('Saved product',exact=True).select_option(product['id'])
     expect(studio.locator('.prototype-records')).to_contain_text('Interview five activation users')
     studio.get_by_role('button',name='Key vault',exact=True).click()
@@ -90,6 +92,7 @@ with sync_playwright() as p:
     studio.get_by_role('button',name='Agent memory',exact=True).click()
     expect(studio.locator('.memory-entry').filter(has_text='Validate the 8% and 5%')).to_have_count(1)
     studio.get_by_role('button',name='Build a product',exact=True).click()
+    studio.get_by_role('button',name='Guided form · no model',exact=True).click()
     studio.get_by_label('Saved product',exact=True).select_option(product['id'])
     studio.get_by_label('Reviewed product decision',exact=True).select_option(index=1)
     studio.get_by_label('Decision requirement changes',exact=True).fill('{"theme":"dark"}')

@@ -7,3 +7,7 @@ services:
     build:
       context: .local/container-build/web
       dockerfile: Dockerfile
+  compiler:
+    build:
+      context: .local/container-build/compiler
+      dockerfile: Dockerfile

@@ -29,6 +29,10 @@ if b'PRIVATE KEY' in public_bundle:raise ValueError('Refusing to copy a private 
 (api/'Dockerfile').write_text('FROM python:3.12.14-slim\nWORKDIR /app\nENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 SSL_CERT_FILE=/app/ca_bundle.crt\nCOPY ca_bundle.crt ./\nCOPY requirements.lock ./\nCOPY wheels /wheels\nRUN pip install --no-index --find-links=/wheels --require-hashes -r requirements.lock && rm -rf /wheels\nCOPY backend ./backend\nCOPY frontend ./frontend\nCOPY scripts ./scripts\nCOPY sample-data ./sample-data\nCOPY container_start.py verify_local_model.py ./\nRUN useradd --create-home --uid 10001 evolvyn && chown -R evolvyn:evolvyn /app\nUSER evolvyn\nEXPOSE 8000\nCMD ["python","container_start.py"]\n')
 shutil.copytree(root/'frontend/dist',web/'dist',dirs_exist_ok=True)
 shutil.copy2(root/'frontend/nginx.conf',web/'nginx.conf')
+compiler=context/'compiler';compiler.mkdir(exist_ok=True)
+shutil.copytree(root/'frontend/node_modules',compiler/'node_modules',dirs_exist_ok=True)
+shutil.copy2(root/'compiler/server.mjs',compiler/'server.mjs')
+(compiler/'Dockerfile').write_text('FROM node:24-bookworm-slim\nWORKDIR /compiler\nCOPY --chown=node:node node_modules ./node_modules\nCOPY --chown=node:node server.mjs ./server.mjs\nUSER node\nEXPOSE 8070\nCMD ["node","server.mjs"]\n')
 (web/'Dockerfile').write_text('FROM nginx:1.28-alpine\nCOPY dist /usr/share/nginx/html\nCOPY nginx.conf /etc/nginx/conf.d/default.conf\nRUN chown -R nginx:nginx /usr/share/nginx/html\nEXPOSE 80\n')
 PY
 docker compose --env-file .local/deploy.env -f compose.yaml -f compose.offline.yaml build

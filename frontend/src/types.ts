@@ -41,6 +41,7 @@ export type Report = {
   market_research: string;
 };
 export type Run = {
+  chat_result?: {mode?: string; classification?: string; usage?: {provider?: string; model?: string}};
   engine?: string;
   execution_result?: {
     tool: string;

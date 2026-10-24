@@ -15,6 +15,7 @@ class ToolContext:
     approved:bool=False
     idempotency_key:str|None=None
     exposed_name:str|None=None
+    execution_id:str|None=None
 
 @dataclass
 class Tool:

@@ -192,6 +192,9 @@ def generate(spec, root=None):
     lock = json.loads((assets/'package-lock.json').read_text())
     lock['name'] = 'generated-product'; lock['packages']['']['name'] = 'generated-product'
     files={'frontend/package.json':json.dumps(package,indent=2),'frontend/package-lock.json':json.dumps(lock), 'frontend/index.html':'<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Product workspace</title></head><body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body></html>', 'frontend/src/main.jsx':REACT,'frontend/src/style.css':STYLE,'frontend/src/spec.json':public,'frontend/vite.config.js':"import {defineConfig} from 'vite';export default defineConfig({server:{proxy:{'/api':'http://localhost:8000'}}});",'backend/spec.json':public,'.gitignore':'.env\nnode_modules/\ndist/\n*.db\n__pycache__/\n', '.env.example':'POSTGRES_PASSWORD=replace-with-a-long-random-password\n', 'README.md':'# '+spec['name']+'\n\nGenerated starter implementing account authentication and private entity CRUD.\n\n1. Copy .env.example to .env and replace the database password.\n2. Run docker compose up --build -d.\n3. Open http://localhost:8000.\n\nThis is a starter, not a production security certification. Review generated source and add domain-specific business logic, email recovery, TLS, backups, monitoring and your acceptance tests before deployment. Requested integrations are recorded in spec.json and require explicit connector implementation.\n'}
+    if spec.get('experience'):
+        files['frontend/src/product-experience.json']=json.dumps(spec['experience'],ensure_ascii=False,indent=2)
+        files['frontend/src/main.jsx']=files['frontend/src/main.jsx'].replace("import spec from './spec.json';","import spec from './spec.json';\nimport experience from './product-experience.json';").replace('<p>{spec.goal}</p>{selected&&','<p>{spec.goal}</p><section className="designed-page"><div className="design-element heading"><h2>{experience.headline}</h2><p>{experience.description}</p></div>{experience.sections.map((s,i)=><article className="design-element" key={i}><h3>{s.heading}</h3><p>{s.text}</p></article>)}</section>{selected&&')
     docker_front='FROM node:24-bookworm-slim AS web\nWORKDIR /web\nCOPY frontend/package*.json ./\nRUN npm ci --no-audit --no-fund\nCOPY frontend ./\nRUN npm run build\n'
     if spec['stack']=='react_fastapi':
         files.update({'backend/app.py':PYTHON,'backend/requirements.txt':'fastapi==0.115.12\nuvicorn==0.34.2\npsycopg[binary]==3.2.9\n','Dockerfile':docker_front+'FROM python:3.12-slim\nWORKDIR /app\nCOPY backend/requirements.txt ./\nRUN pip install --no-cache-dir -r requirements.txt\nCOPY backend ./\nCOPY --from=web /web/dist ./static\nRUN useradd --uid 10001 --create-home product && chown -R product:product /app\nUSER product\nEXPOSE 8000\nCMD ["uvicorn","app:app","--host","0.0.0.0","--port","8000"]\n'})
@@ -241,7 +244,10 @@ def validate(files):
         compose=yaml.safe_load(files['compose.yaml'])
         services=compose['services']
         if any(services[name].get('networks')!=['product_private'] for name in ('app','db')):raise ValueError('Product network boundary missing')
-        if any(services[name].get('networks')!=['agent_private'] for name in ('agents_db','agents_api','agents_web')):raise ValueError('Agent network boundary missing')
+        if any(services[name].get('networks')!=['agent_private'] for name in ('agents_db','agents_web')):raise ValueError('Agent network boundary missing')
+        if services['agents_api'].get('networks')!=['agent_private','agent_compiler']:raise ValueError('Agent API network boundary missing')
+        if services['agents_compiler'].get('networks')!=['agent_compiler'] or not compose['networks']['agent_compiler'].get('internal'):raise ValueError('Compiler isolation missing')
+        if services['agents_compiler'].get('volumes') or services['agents_compiler'].get('ports'):raise ValueError('Compiler must not expose ports or mount private data')
         if any(services[name].get('ports') for name in ('db','agents_db','agents_api')):raise ValueError('Private service port exposed')
         checks.append('Compose services and isolated product/agent networks validated')
     except (yaml.YAMLError,KeyError,TypeError):raise ValueError('Invalid generated Compose source')

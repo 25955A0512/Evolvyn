@@ -95,6 +95,7 @@ with sync_playwright() as p:
     expect(studio.locator('.capability-list')).not_to_contain_text('analyze_business')
     page.screenshot(path=str(out/'shared-runtime.png'),full_page=True)
     studio.get_by_role('button',name='Build a product',exact=True).click()
+    studio.get_by_role('button',name='Guided form · no model',exact=True).click()
     studio.get_by_label('Saved product',exact=True).select_option(product['id'])
     studio.get_by_role('button',name='Build product starter',exact=True).click()
     studio.get_by_role('button',name='Download source',exact=True).wait_for(timeout=30000)

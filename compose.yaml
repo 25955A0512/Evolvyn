@@ -41,6 +41,7 @@ services:
         target.chmod(0o600)
   api:
     build: .
+    networks: [default, compile_private]
     env_file:
       - path: .local/mcp-secrets.env
         required: false
@@ -55,10 +56,12 @@ services:
       EVOLVYN_HELP_GROQ_KEY: ${EVOLVYN_HELP_GROQ_KEY:-}
       EVOLVYN_HELP_GROQ_MODEL: ${EVOLVYN_HELP_GROQ_MODEL:-}
       APP_ENV: production
+      EVOLVYN_COMPILER_URL: http://compiler:8070
+      EVOLVYN_COMPILER_TOKEN: ${EVOLVYN_COMPILER_TOKEN:-}
       EVOLVYN_VAULT_KEY_FILE: /run/evolvyn-secrets/vault.key
       HTTP_PROXY: ${HTTP_PROXY:-}
       HTTPS_PROXY: ${HTTPS_PROXY:-}
-      NO_PROXY: localhost,127.0.0.1,db,api
+      NO_PROXY: localhost,127.0.0.1,db,api,compiler
       DATABASE_URL: postgresql://evolvyn:${POSTGRES_PASSWORD}@db:5432/evolvyn
       EVOLVYN_ACCESS_TOKEN: ${EVOLVYN_ACCESS_TOKEN}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
@@ -89,6 +92,29 @@ services:
       api:
         condition: service_healthy
     restart: unless-stopped
+  compiler:
+    networks: [compile_private]
+    build:
+      context: .
+      dockerfile: compiler/Dockerfile
+    environment:
+      EVOLVYN_COMPILER_TOKEN: ${EVOLVYN_COMPILER_TOKEN:-}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:size=32m,mode=1777"]
+    mem_limit: 384m
+    cpus: 1
+    pids_limit: 64
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:8070/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
 volumes:
   database:
   vault_secrets:
+networks:
+  compile_private:
+    internal: true

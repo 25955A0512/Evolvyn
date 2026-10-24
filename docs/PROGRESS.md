@@ -99,3 +99,15 @@ Previous connected-runtime validation: **103 unit/API/integration tests passed**
 - [ ] Native merchant/social/ad credentials and live external publication; arbitrary CSV mappings; quantitative competitor/market-share conclusions without an authorized source.
 
 Validation: **130 tests passed**. The live e-commerce browser journey and existing account, registry/governance and studio browser regressions pass. Actual public research succeeded during acceptance, but it remains limited discussion evidence. No live external store/ad action or causal revenue improvement is claimed. See ECOMMERCE_AUDIT.md for the actual execution path and import/action boundaries.
+
+## Product agent workspace revision
+
+- [x] Existing builder retained; default requirements conversation invokes actual model gateway through bounded graph nodes.
+- [x] Confirmed requirement proposals, revision conflict prevention, persistent agent history.
+- [x] Enabled PRD/architecture/interface/reviewer phases, typed diagrams, hierarchical source inspection and approval-bound implementation.
+- [x] Isolated non-executing frontend compiler with honest passed/failed/unavailable receipts; application runtime status remains separate.
+- [x] File-free conversational chat; no CSV preflight for ordinary greetings.
+- [ ] Arbitrary generated application execution, domain-specific code repair and cloud preview/deployment broker.
+- [ ] Live remote-provider acceptance requires valid private credentials.
+
+Verification for this revision: 158 backend tests pass; TypeScript/Vite production build passes. Live Chromium checks pass for account, e-commerce, control center, guided studio, canvas/evolution, and the new local-model builder. The live source-build case uses PRD, architecture and interface agents plus human approval; the four-agent local run separately verified reviewer rejection blocks source generation. Controlled model fixtures verify the four-agent positive path, stale/replayed approvals and invalid outputs. Both emitted frontend stacks compile through the real isolated service; unauthorized requests, invalid syntax/imports/paths and incomplete receipts are rejected. The exported runtime passes independent startup/accounts/MCP/governance/nested-export checks. Gemini/Groq calls remain unverified without credentials.

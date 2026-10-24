@@ -47,6 +47,7 @@ import "@fontsource/manrope/800.css";
 import "./style.css";
 import "./workspace-refresh.css";
 import "./reference-interactions.css";
+import "./product-workbench.css";
 function App() {
   const [token, setToken] = useState(
     sessionStorage.getItem("evolvyn-token") || "",
@@ -54,7 +55,7 @@ function App() {
   const [entry, setEntry] = useState("");
   const [demoConversation, setDemoConversation] = useState<string | null>(null);
   const [mode, setMode] = useState("default");
-  const [analysisKind, setAnalysisKind] = useState("business");
+  const [analysisKind, setAnalysisKind] = useState("auto");
   const [list, setList] = useState<Convo[]>([]);
   const [current, setCurrent] = useState<Convo | null>(null);
   const [businesses, setBusinesses] = useState<Business[]>([]);
@@ -1178,7 +1179,9 @@ function App() {
                   value={analysisKind}
                   onChange={(e) => setAnalysisKind(e.target.value)}
                 >
-                  <option value="business">Business</option>
+                  <option value="auto">Auto · chat or analysis</option>
+                  <option value="assistant">Ask Evolvyn · chat</option>
+                  <option value="business">Business analysis</option>
                   <option value="operations">Uploaded logs</option>
                 </select>
                 <select

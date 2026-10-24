@@ -142,6 +142,25 @@ class GraphHarness:
         if len(json.dumps(checkpoint_data))>600_000:raise ValueError('Checkpoint state budget exceeded')
         result=self.s['change_execution'](owner,id,{'graph_checkpoint':checkpoint_data,'events':checkpoint_data['events'],**updates})
         if not result:raise asyncio.CancelledError()
+    async def start(self,owner,id,conversation_id):
+        s=self.s
+        if len(s['JOBS'])>=4:raise HTTPException(429,'Four executions are already running; wait for a slot')
+        graph=s['get'](owner,id,'agent_graph');conversation=s['get'](owner,conversation_id,'conversation')
+        definition=Definition.model_validate({k:v for k,v in graph.items() if k!='id'})
+        for node in definition.nodes:
+            if node.type=='agent':
+                with model_scope(owner,node.agent_id):s['POLICY'].data(owner,conversation,effective_mode(node.mode))
+        principal=s['POLICY'].require(owner,'write');execution_id=str(uuid4())
+        record={'engine':'graph','conversation':conversation_id,'definition':definition.model_dump(),'graph_id':id,'question':definition.goal,'state':'CREATED','events':[],'output':'','report':None,'actor':principal.account}
+        with s['conn']() as c:
+            row=c.execute("SELECT body FROM records WHERE id=%s AND owner=%s FOR UPDATE",(conversation_id,owner)).fetchone()
+            if c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('CREATED','RUNNING')",(owner,conversation_id)).fetchone():raise HTTPException(409,'Conversation already has an active execution')
+            c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(execution_id,owner,'execution',json.dumps(record)))
+            conv=row['body'];conv['messages'] += [{'role':'user','text':definition.goal},{'role':'assistant','text':'Agent graph is running…','execution':execution_id}]
+            c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(conv),conversation_id))
+        s['JOBS'][execution_id]=asyncio.create_task(self.run(owner,execution_id))
+        return {'id':execution_id,**record}
+
     async def run(self,owner,id):
         s=self.s;run=s['claim_job'](s['conn'],owner,id)
         if not run:s['JOBS'].pop(id,None);return
@@ -190,7 +209,7 @@ class GraphHarness:
                             return
                         cp['grant']=None;current['status']='executing'
                         self.checkpoint(owner,id,cp)
-                        context=ToolContext(owner,permissions=frozenset({'workspace.read','workspace.write'}),remaining=min(definition.max_tool_calls,settings['max_tool_calls'])-cp['tools_used'],approved=approved,idempotency_key=id+':'+node.id+':'+str(current['visit']))
+                        context=ToolContext(owner,permissions=frozenset({'workspace.read','workspace.write'}),remaining=min(definition.max_tool_calls,settings['max_tool_calls'])-cp['tools_used'],approved=approved,idempotency_key=id+':'+node.id+':'+str(current['visit']),execution_id=id)
                         last_error=None;output=None
                         for attempt in range(node.retry.attempts):
                             if context.remaining<=0:raise ValueError('Tool budget exhausted')
@@ -269,7 +288,7 @@ class GraphHarness:
             raise
         except Exception as error:
             # Policy and budget reasons are safe; raw remote/provider errors are never exposed.
-            reason=('Policy denied this execution' if isinstance(error,HTTPException) else 'Node input/output validation or execution failed; inspect configuration and source availability')
+            reason=('Policy denied this execution' if isinstance(error,HTTPException) and error.status_code in (401,403) else 'Node input/output validation or execution failed; inspect configuration and saved build results')
             safe_prefixes=('Graph step/iteration budget','Model output-token budget','Tool budget','Checkpoint state budget','Interrupted non-idempotent tool outcome','No runnable node','References must point','Argument nesting limit','Condition input is missing')
             if isinstance(error,ValueError) and str(error).startswith(safe_prefixes):reason=str(error)
             if isinstance(error,TimeoutError):reason='Execution or node time budget exceeded'
@@ -319,20 +338,7 @@ def install(app,auth,harness):
         return s['save'](owner,'agent_graph',body.model_dump(),id)
     @app.post('/api/harness/graphs/{id}/run',status_code=202)
     async def start(id:str,body:Start,owner=Depends(auth)):
-        graph=s['get'](owner,id,'agent_graph');conversation=s['get'](owner,body.conversation_id,'conversation')
-        definition=Definition.model_validate({k:v for k,v in graph.items() if k!='id'})
-        for node in definition.nodes:
-            if node.type=='agent':s['POLICY'].data(owner,conversation,node.mode)
-        principal=s['POLICY'].require(owner,'write');execution_id=str(uuid4())
-        record={'engine':'graph','conversation':body.conversation_id,'definition':definition.model_dump(),'graph_id':id,'question':definition.goal,'state':'CREATED','events':[],'output':'','report':None,'actor':principal.account}
-        with s['conn']() as c:
-            row=c.execute("SELECT body FROM records WHERE id=%s AND owner=%s FOR UPDATE",(body.conversation_id,owner)).fetchone()
-            if c.execute("SELECT id FROM records WHERE owner=%s AND kind='execution' AND body->>'conversation'=%s AND body->>'state' IN ('CREATED','RUNNING')",(owner,body.conversation_id)).fetchone():raise HTTPException(409,'Conversation already has an active execution')
-            c.execute('INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,%s,%s)',(execution_id,owner,'execution',json.dumps(record)))
-            conv=row['body'];conv['messages'] += [{'role':'user','text':definition.goal},{'role':'assistant','text':'Agent graph is running…','execution':execution_id}]
-            c.execute('UPDATE records SET body=%s WHERE id=%s',(json.dumps(conv),body.conversation_id))
-        s['JOBS'][execution_id]=asyncio.create_task(harness.run(owner,execution_id))
-        return {'id':execution_id,**record}
+        return await harness.start(owner,id,body.conversation_id)
     @app.get('/api/harness/executions')
     def executions(owner=Depends(auth)):return [r for r in s['listing'](owner,'execution') if r.get('engine')=='graph']
     @app.post('/api/harness/executions/{id}/decision')

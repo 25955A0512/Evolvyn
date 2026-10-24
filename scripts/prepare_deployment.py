@@ -13,6 +13,8 @@ if not path.exists():
 for name in ('models','llama'):
     (path.parent/name).mkdir(exist_ok=True)
     (path.parent/name).chmod(0o755)
+if not any(line.startswith('EVOLVYN_COMPILER_TOKEN=') for line in path.read_text().splitlines()):
+    with path.open('a') as file:file.write('\nEVOLVYN_COMPILER_TOKEN='+secrets.token_urlsafe(32)+'\n')
 proxy=urlparse(os.getenv('HTTPS_PROXY',os.getenv('HTTP_PROXY',''))).hostname
 if proxy:
     try:

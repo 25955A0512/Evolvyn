@@ -84,12 +84,13 @@ def parsed_answer(field,text):
 class Studio:
     def __init__(self,get,save,listing,policy):self.get,self.save,self.listing,self.policy=get,save,listing,policy
     def present(self,row):return {**row,'next_question':next_question(row),'ready':next_question(row) is None}
-    async def build(self,owner,id,revision,approved=False):
+    async def build(self,owner,id,revision,approved=False,blueprint=None):
         spec=self.get(owner,id,'product_spec');self.policy.require(owner,'write')
         if spec['revision']!=revision:raise HTTPException(409,'Requirements changed; refresh before building')
         if next_question(spec):raise HTTPException(422,'Complete the requirements interview first')
         self.policy.tool(owner,'build_product','internal_write','workspace.write',{'workspace.write'},approved)
         requirements={**spec['requirements'],'name':spec['name'],'goal':spec['goal']}
+        if blueprint and blueprint.get('experience'):requirements['experience']=blueprint['experience']
         if requirements['stack'] not in ('react_fastapi','react_express'):raise HTTPException(422,'This stack has no verified build adapter. Its requirements are saved; select a supported adapter or connect an isolated custom-code runner.')
         id_build=str(uuid4());events=[]
         record={'spec_id':id,'project_id':spec.get('project_id'),'revision':revision,'spec':requirements,'state':'BUILDING','events':events,'engine':'LangGraph + trusted source adapters','created_at':datetime.now(timezone.utc).isoformat(),'files':{},'implemented_capabilities':['Private account registration and sign-in','Owner-scoped entity CRUD','Responsive themed React UI','PostgreSQL configuration and Docker source','Complete isolated Evolvyn agent runtime and console'],'pending_requirements':[feature for feature in requirements.get('features',[]) if feature.lower() not in {'private accounts','create records','view records','delete records','update records','crud'}],'integration_status':'Requested integrations are recorded as requirements; connector implementation is separate.'}
@@ -100,7 +101,16 @@ class Studio:
             return {'attempts':state['attempts'],'files':{},'checks':[],'error':''}
         async def developer(state):
             persist('developer','Generated frontend, authenticated backend, database configuration and Docker source')
-            return {'files':generate(requirements),'attempts':state['attempts']+1,'checks':[],'error':''}
+            files=generate(requirements)
+            if blueprint:
+                if blueprint.get('prd'):files['docs/PRD.md']=blueprint['prd']
+                if blueprint.get('architecture'):
+                    architecture=blueprint['architecture'];diagram='flowchart LR\n'+'\n'.join(n['id']+'["'+n['label'].replace('"',"'")+'"]' for n in architecture['nodes'])+'\n'+'\n'.join(e['source']+' --> '+e['target'] for e in architecture['edges'])
+                    files['docs/ARCHITECTURE.md']='# Architecture\n\n```mermaid\n'+diagram+'\n```\n\n'+architecture.get('notes','')
+                    files['docs/architecture.json']=json.dumps(architecture,indent=2)
+                files['docs/AGENT_REVIEW.json']=json.dumps(blueprint.get('review'),indent=2)
+                files['docs/IMPLEMENTATION.md']='# Implementation boundary\n\nApproved revision '+str(revision)+'. Model-designed experience and data model are implemented through the selected verified source adapter. Accounts and private entity CRUD are included. Requested third-party integrations and domain-specific features require explicit implementation and verification. Source validation is not a running deployment.\n'
+            return {'files':files,'attempts':state['attempts']+1,'checks':[],'error':''}
         async def reviewer(state):
             try:checks=validate(state['files']);error=''
             except Exception:checks=[];error='Source validation failed'
@@ -112,6 +122,12 @@ class Studio:
             with tracing_context(enabled=False):
                 result=await graph.compile().ainvoke({'files':{},'attempts':0,'checks':[],'error':''},{'recursion_limit':10})
             record.update(state='READY' if not result['error'] else 'FAILED',files=result['files'],checks=result['checks'],error=result['error'],source_sha256=hashlib.sha256(json.dumps(result['files'],sort_keys=True).encode()).hexdigest(),validation_scope='Source/contract validation only. Run the generated application and project-specific acceptance tests before deployment.')
+            record['blueprint']=blueprint
+            if record['state']=='READY':
+                from backend.source_compiler import compile_frontend
+                compiled=await compile_frontend(record['files']);record['frontend_build']=compiled
+                if compiled['status']=='failed':record.update(state='FAILED',error='Frontend compilation failed; the source was retained for inspection')
+                elif compiled['status']=='passed':record['validation_scope']='Frontend compiled in the isolated compiler service; backend syntax and contracts validated. No application runtime or cloud deployment was started.'
         except Exception:record.update(state='FAILED',error='Build adapter failed; requirements are retained')
         return self.save(owner,'product_build',record,id_build)
 

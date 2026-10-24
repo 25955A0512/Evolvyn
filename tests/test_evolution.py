@@ -84,7 +84,10 @@ def test_generated_compose_separates_product_runtime_and_catches_invalid_yaml():
     files=generate({**spec,'name':'Isolated product','goal':'Preserve private network boundaries'})
     services=yaml.safe_load(files['compose.yaml'])['services']
     assert services['db']['networks']==services['app']['networks']==['product_private']
-    assert services['agents_db']['networks']==services['agents_api']['networks']==['agent_private']
+    assert services['agents_db']['networks']==['agent_private']
+    assert services['agents_api']['networks']==['agent_private','agent_compiler']
+    assert services['agents_compiler']['networks']==['agent_compiler']
+    assert not services['agents_compiler'].get('volumes')
     assert 'OAUTH_GOOGLE_CLIENT_SECRET' in services['agents_api']['environment']
     assert services['agents_vault_init']['network_mode']=='none'
     assert not services['db'].get('ports') and not services['agents_api'].get('ports')
