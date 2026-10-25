@@ -37,6 +37,9 @@ def initialize(c):
     c.execute('CREATE TABLE IF NOT EXISTS account_sessions (digest text PRIMARY KEY,account_id text REFERENCES accounts(id),organization_id text REFERENCES organizations(id),expires timestamptz NOT NULL)')
     c.execute('CREATE TABLE IF NOT EXISTS oauth_identities (provider text NOT NULL,subject text NOT NULL,account_id text NOT NULL REFERENCES accounts(id),PRIMARY KEY(provider,subject))')
     c.execute('CREATE TABLE IF NOT EXISTS oauth_states (digest text PRIMARY KEY,provider text NOT NULL,verifier text NOT NULL,browser_digest text NOT NULL,link_account text REFERENCES accounts(id),expires timestamptz NOT NULL)')
+    for column in ('session_digest','organization_id','config_digest'):
+        c.execute('ALTER TABLE oauth_states ADD COLUMN IF NOT EXISTS '+column+' text')
+    c.execute('CREATE INDEX IF NOT EXISTS oauth_states_expiry ON oauth_states(expires)')
     c.execute('CREATE TABLE IF NOT EXISTS account_preferences (account_id text PRIMARY KEY REFERENCES accounts(id),body jsonb NOT NULL)')
 
 

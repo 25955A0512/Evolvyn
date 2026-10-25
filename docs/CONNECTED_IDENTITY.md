@@ -72,3 +72,11 @@ Nginx logs the path without query arguments, at server scope to override inherit
 External OAuth/Gemini boundaries are validated with explicitly mocked transports; GitHub MCP discovery uses the real stdio protocol. No live OAuth applications or Gemini credential exist in this cloud workspace. Keys saved in a user's local Docker database are not available here and are not copied. Live provider acceptance therefore remains a required local check.
 
 Remaining production work includes a general MCP OAuth adapter framework, private-repository GitHub App scopes/writes, granular project capability UX, independent worker deployment and fair tenant quotas, pooled/asynchronous database access, full telemetry and workload benchmarks, sandboxed arbitrary application execution/repair/preview, source editing/diffs/rollback, and actual cloud security/recovery release validation.
+
+## OAuth launch hardening
+
+Pending sign-in/link/connector states are now bound to a configuration fingerprint so changing the client or callback invalidates the pending authorization. Explicit identity linking revalidates the initiating session and organization membership before and after the provider request, preserves the initiating organization, and rejects a second conflicting identity for the same provider. These use additive OAuth-state columns; existing accounts/data are preserved and pending pre-upgrade authorizations must restart.
+
+Origins must be HTTP loopback or valid HTTPS origins without userinfo, paths, queries or fragments; HTTPS requires Secure cookies. Host-prefixed transient OAuth cookies use root paths. Fixed-provider reads have byte limits, schema checks and bounded time. Browser callback failures show safe recovery links without reflecting codes/state; auth responses are not cached. Credential setup is private through `scripts/configure_oauth.py`, with hidden input and an offline `--check` that never claims live verification.
+
+See [AWS_FIRST_DEPLOYMENT.md](AWS_FIRST_DEPLOYMENT.md) for a concrete single-instance HTTPS deployment and its limits. AWS provisioning and real Google/GitHub authorization remain unverified until an operator supplies the domain and registers the applications.

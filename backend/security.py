@@ -46,6 +46,9 @@ def install(app,save):
         finally:REQUEST.reset(token)
         response.headers['X-Content-Type-Options']='nosniff'
         response.headers['Referrer-Policy']='no-referrer'
+        if request.url.path.startswith('/api/auth/'):
+            response.headers['Cache-Control']='no-store'
+            response.headers['Pragma']='no-cache'
         response.headers['X-Request-ID']=request.state.request_id
         logger.info(json.dumps({'request_id':request.state.request_id,'method':request.method,'route':getattr(request.scope.get('route'),'path','unmatched'),'status':response.status_code,'duration_ms':round((time.monotonic()-started)*1000,2)}))
         identity=getattr(request.state,'identity',None)

@@ -6,7 +6,8 @@ from uuid import uuid4
 import httpx
 from fastapi import Depends,HTTPException,Request
 from fastapi.responses import JSONResponse,RedirectResponse
-from backend.oauth import configuration,digest
+from backend.oauth import configuration,digest,oauth_cookie_path,provider_json
+from backend.oauth_config import fingerprint
 from backend.identity import session_cookie_name
 from backend.policy import ACTOR,Principal
 from backend.vault import CredentialInput
@@ -25,6 +26,8 @@ class ConnectorOAuth:
         if not row:raise HTTPException(400,'Connector authorization state expired or already consumed')
         owner,data=row['owner'],row['body']
         if datetime.fromisoformat(data['expires'])<datetime.now(timezone.utc) or not secrets.compare_digest(data['browser_digest'],digest(request.cookies.get(cookie_name(),''))):raise HTTPException(400,'Connector authorization belongs to another browser or expired')
+        settings=configuration('github')
+        if not data.get('config_digest') or not secrets.compare_digest(data['config_digest'],fingerprint(settings)):raise HTTPException(400,'OAuth configuration changed; restart connector authorization')
         with s['conn']() as c:
             member=c.execute('SELECT role FROM memberships WHERE account_id=%s AND organization_id=%s',(data['actor'],owner)).fetchone()
             active=c.execute('SELECT account_id FROM account_sessions WHERE digest=%s AND account_id=%s AND organization_id=%s AND expires>now()',(data['session_digest'],data['actor'],owner)).fetchone()
@@ -36,23 +39,24 @@ class ConnectorOAuth:
             settings=configuration('github')
             try:
                 async with httpx.AsyncClient(timeout=15,follow_redirects=False) as client:
-                    response=await client.post(settings['token'],data={'grant_type':'authorization_code','code':code,'client_id':settings['client_id'],'client_secret':settings['client_secret'],'redirect_uri':settings['redirect_uri'],'code_verifier':data['verifier']},headers={'Accept':'application/json'})
-                    response.raise_for_status();token=response.json().get('access_token')
+                    result=await provider_json(client,'POST',settings['token'],data={'grant_type':'authorization_code','code':code,'client_id':settings['client_id'],'client_secret':settings['client_secret'],'redirect_uri':settings['redirect_uri'],'code_verifier':data['verifier']},headers={'Accept':'application/json'})
+                    if not isinstance(result,dict):raise ValueError('Invalid token response')
+                    token=result.get('access_token')
                     if not isinstance(token,str) or not 8<=len(token)<=8192:raise ValueError('Missing token')
-                    response=await client.get('https://api.github.com/user',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
-                    response.raise_for_status();profile=response.json()
+                    profile=await provider_json(client,'GET','https://api.github.com/user',headers={'Authorization':'Bearer '+token,'Accept':'application/vnd.github+json'})
+                    if not isinstance(profile,dict):raise ValueError('Invalid profile')
                     if type(profile.get('id')) is not int or not isinstance(profile.get('login'),str):raise ValueError('Invalid profile')
             except Exception:raise HTTPException(502,'GitHub authorization or profile verification failed. No connection was marked active.')
             prior=self.status(owner)
             credential=s['VAULT'].put(owner,CredentialInput(name='GitHub authorized connector',provider='mcp',value=token),prior.get('credential_id') if prior else None)
             server=s['save'](owner,'mcp_server',{'name':'GitHub · authorized read-only','transport':'stdio','profile':'github','url':None,'auth_env':None,'credential_id':credential['id'],'enabled':True,'risk':'read','timeout_seconds':20,'status':'registered','tools':[]},prior.get('server_id') if prior else None)
             checked=await s['MCP_REGISTRY'].probe(owner,server['id'])
-            connection={'provider':'github','actor':data['actor'],'login':profile['login'][:100],'subject':str(profile['id']),'credential_id':credential['id'],'server_id':server['id'],'state':'connected' if checked['status']=='healthy' else 'needs_test','scope':'Public repositories; read-only tools','last_success_at':datetime.now(timezone.utc).isoformat(),'updated_at':datetime.now(timezone.utc).isoformat()}
+            connection={'provider':'github','actor':data['actor'],'login':profile['login'][:100],'subject':str(profile['id']),'credential_id':credential['id'],'server_id':server['id'],'state':'connected' if checked['status']=='healthy' else 'needs_test','scope':'Public repositories; read-only tools','last_success_at':datetime.now(timezone.utc).isoformat() if checked['status']=='healthy' else None,'updated_at':datetime.now(timezone.utc).isoformat()}
             saved=s['save'](owner,'integration_connection',connection,prior['id'] if prior else None)
             if checked['status']=='healthy':self.register(owner,saved,checked)
             s['save'](owner,'audit',{'actor':data['actor'],'action':'connector.authorized','provider':'github','state':connection['state'],'at':connection['updated_at']})
         finally:ACTOR.reset(actor)
-        response=RedirectResponse('/integrations?connection=github',status_code=303);response.delete_cookie(cookie_name(),path='/api/auth/oauth');response.headers['Cache-Control']='no-store'
+        response=RedirectResponse('/integrations?connection=github',status_code=303);response.delete_cookie(cookie_name(),path=oauth_cookie_path(cookie_name()));response.headers['Cache-Control']='no-store'
         return response
     def register(self,owner,connection,server):
         existing=self.s['listing'](owner,'registered_tool')
@@ -89,10 +93,10 @@ class ConnectorOAuth:
                 c.execute("DELETE FROM records WHERE kind='connector_oauth_state' AND body->>'expires'<%s",(datetime.now(timezone.utc).isoformat(),))
                 count=c.execute("SELECT count(*) AS n FROM records WHERE owner=%s AND kind='connector_oauth_state'",(owner,)).fetchone()['n']
                 if count>=5:raise HTTPException(429,'Finish an existing authorization or wait ten minutes')
-                c.execute("INSERT INTO records(id,owner,kind,body) VALUES(%s,%s,'connector_oauth_state',%s)",('connector-state:'+digest(state),owner,json.dumps({'provider':'github','actor':principal.account,'session_digest':digest(request.cookies.get(session_cookie_name(),'')),'browser_digest':digest(browser),'verifier':verifier,'expires':expires.isoformat()})))
+                c.execute("INSERT INTO records(id,owner,kind,body) VALUES(%s,%s,'connector_oauth_state',%s)",('connector-state:'+digest(state),owner,json.dumps({'provider':'github','actor':principal.account,'session_digest':digest(request.cookies.get(session_cookie_name(),'')),'browser_digest':digest(browser),'verifier':verifier,'expires':expires.isoformat(),'config_digest':fingerprint(settings)})))
             challenge=base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b'=').decode()
             url=settings['authorize']+'?'+urlencode({'client_id':settings['client_id'],'redirect_uri':settings['redirect_uri'],'scope':'read:user','state':state,'code_challenge':challenge,'code_challenge_method':'S256'})
-            response=JSONResponse({'authorize_url':url});response.set_cookie(cookie_name(),browser,httponly=True,secure=__import__('os').getenv('COOKIE_SECURE')=='1',samesite='lax',max_age=600,path='/api/auth/oauth');response.headers['Cache-Control']='no-store';return response
+            response=JSONResponse({'authorize_url':url});response.set_cookie(cookie_name(),browser,httponly=True,secure=__import__('os').getenv('COOKIE_SECURE')=='1',samesite='lax',max_age=600,path=oauth_cookie_path(cookie_name()));response.headers['Cache-Control']='no-store';return response
         @app.post('/api/integrations/github/test')
         async def test(owner=Depends(auth)):
             s['POLICY'].require(owner,'manage_registry');row=self.status(owner)

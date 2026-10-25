@@ -1,0 +1,10 @@
+# Initial single-instance deployment behind an HTTPS AWS ALB, not an HA topology.
+# Requires Docker Compose >= 2.24.4 for !override. Never expose 8080 to the internet.
+services:
+  web:
+    ports: !override
+      - "0.0.0.0:8080:80"
+    environment:
+      EVOLVYN_TRUSTED_PROXY_CIDR: ${EVOLVYN_TRUSTED_PROXY_CIDR:?Set the actual ALB VPC CIDR in private deployment settings}
+    volumes:
+      - ./deploy/nginx.aws.conf.template:/etc/nginx/templates/default.conf.template:ro
