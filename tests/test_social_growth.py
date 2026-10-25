@@ -113,7 +113,7 @@ def test_rejected_observations_never_saved(c,monkeypatch,failure):
         data=observation()
         if failure=='account':data['account_id']='other'
         if failure=='schema':data['posts'][0]['likes']=-1
-        if failure=='revocation':c.delete('/api/vault/credentials/'+cred['id']).raise_for_status()
+        if failure=='revocation':(await asyncio.to_thread(c.delete,'/api/vault/credentials/'+cred['id'])).raise_for_status()
         return data
     monkeypatch.setattr(module.MCP_REGISTRY,'call',boundary)
     result=collect(c,s);assert result['state']=='FAILED',result
@@ -250,13 +250,13 @@ def test_other_native_read_adapters_fixed_hosts_and_missing_counters(monkeypatch
 def test_late_observation_cannot_commit_after_revocation_or_cancel(c,monkeypatch,change):
     conv,s,cred=source(c)
     async def boundary(*args):
-        if change=='disconnect':c.delete('/api/growth/social/'+s['id']).raise_for_status()
+        if change=='disconnect':(await asyncio.to_thread(c.delete,'/api/growth/social/'+s['id'])).raise_for_status()
         elif change=='cancel':
-            row=c.get('/api/growth/social',params={'conversation_id':conv['id']}).json()[0]
-            c.post('/api/executions/'+row['last_execution']['id']+'/cancel').raise_for_status()
-        else:c.put('/api/vault/credentials/'+cred['id'],json={'name':'Rotated synthetic','provider':'mcp','value':'synthetic-replacement-'+uuid4().hex}).raise_for_status()
+            with module.conn() as db:run=db.execute("SELECT id FROM records WHERE kind='execution' AND body->>'graph_id'=%s ORDER BY created DESC LIMIT 1",(s['graph_id'],)).fetchone()
+            (await asyncio.to_thread(c.post,'/api/executions/'+run['id']+'/cancel')).raise_for_status()
+        else:(await asyncio.to_thread(c.put,'/api/vault/credentials/'+cred['id'],json={'name':'Rotated synthetic','provider':'mcp','value':'synthetic-replacement-'+uuid4().hex})).raise_for_status()
         return observation()
     monkeypatch.setattr(module.MCP_REGISTRY,'call',boundary)
-    result=collect(c,s);assert result['state'] in ('FAILED','CANCELLED'),result
+    result=collect(c,s);assert result['state']==('CANCELLED' if change=='cancel' else 'FAILED'),result
     row=c.get('/api/growth/social',params={'conversation_id':conv['id']}).json()[0]
     assert row['latest'] is None and not row['last_success_at']

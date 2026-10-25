@@ -43,7 +43,11 @@ export function GrowthWorkspace({
   onManage: ManageConnections;
 }) {
   const scope = projectId || businessId || "organization";
-  const [tab, setTab] = useState<Tab>("overview"),
+  const [tab, setTab] = useState<Tab>(
+      new URLSearchParams(window.location.search).has("social")
+        ? "social"
+        : "overview",
+    ),
     [convos, setConvos] = useState<any[]>([]),
     [businesses, setBusinesses] = useState<any[]>([]),
     [business, setBusiness] = useState(businessId || ""),
@@ -142,10 +146,13 @@ export function GrowthWorkspace({
         setConvos(c);
         setBusinesses(b);
         setProducts(p);
+        const returned = new URLSearchParams(window.location.search).get(
+          "conversation",
+        );
         const remembered = sessionStorage.getItem("evolvyn-growth:" + scope);
         const match = c.find(
           (x: any) =>
-            x.id === (remembered || conversation?.id) &&
+            x.id === (returned || remembered || conversation?.id) &&
             x.project_id === (projectId || null) &&
             (!businessId || x.business_id === businessId),
         );

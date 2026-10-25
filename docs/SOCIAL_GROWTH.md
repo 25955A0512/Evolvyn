@@ -4,6 +4,8 @@ This adds a working read-only vertical slice to the existing Evolvyn architectur
 
 ## Connect Instagram
 
+The preferred flow is now **Connect with Instagram**: the platform owner configures the Meta app once, then each business authorizes its own account. Long-lived exchange and bounded renewal use the existing vault/scheduler. See [Instagram OAuth setup and acceptance](INSTAGRAM_OAUTH.md). The numbered steps below remain the advanced manual-token alternative.
+
 1. Deploy this revision of both API and frontend. Open **Grow your business → Social intelligence** and select an evidence conversation/business. Use a project whose data policy allows selected external providers; local-only projects reject social collection.
 2. Obtain a token for a professional Instagram account through your approved Meta application. Use the account's Instagram business/user ID, **not its @username or Facebook Page ID**. Confirm access to that account using Meta's tools privately.
 3. In **Key vault**, save the authorized access token as provider **MCP**, with a useful label. The Gemini key is the model credential, not a Meta access token. Do not put tokens in chat, screenshots, URLs, source, tool arguments or this document.
@@ -14,7 +16,7 @@ This adds a working read-only vertical slice to the existing Evolvyn architectur
 
 For Facebook Login, account/media read generally needs `instagram_basic` and the appropriate Page permissions (`pages_show_list`, `pages_read_engagement`) for the linked professional account. Reading comments additionally needs `instagram_manage_comments`; analytics endpoints beyond this adapter can require `instagram_manage_insights`. Instagram Login uses `instagram_business_basic` and approved `instagram_business_manage_comments` for comment access. Confirm current scope names, account eligibility, token type, app mode/review and version in Meta's documentation: https://developers.facebook.com/docs/instagram-platform/ . This adapter defaults to Graph `v23.0`; operators can set `EVOLVYN_META_API_VERSION` to a supported `vNN.0`. No permission is granted merely by entering a token.
 
-A rejected nested comment request (HTTP 400/403) retries once for supported post counters without comment fields, with explicit coverage disclosure. Other errors do not produce successful snapshots. Native OAuth login/refresh for Meta is not implemented: replace expired tokens privately, disconnect the old source, and register a new source using the updated credential. Token/config changes invalidate the old binding.
+A rejected nested comment request (HTTP 400/403) retries once for supported post counters without comment fields, with explicit coverage disclosure. Other errors do not produce successful snapshots. For manual-token sources, replace expired tokens privately, disconnect the old source, and register a new source using the updated credential. Native Instagram OAuth sources use the authorization/renewal flow described above. Token/config changes invalidate old bindings.
 
 ## Other connections and extension contract
 
@@ -45,4 +47,4 @@ Email addresses, handles and phone-like text are redacted from captions/comments
 
 `python tests/e2e_social_growth.py`: isolated real API/vault/queue/database/browser, with an explicitly synthetic upstream MCP response and evidence-only review; verifies export, persistence, schedules, mobile layout and disconnect. No live token/model or public deployment success is inferred from these tests.
 
-Still requiring separate work: live operator-authorized Meta acceptance, social OAuth/token refresh, complete social retention/erasure policy, representative sentiment analysis, competitor access, post/ads publishing, attribution/causal outcomes, broader forecasting, social PDF/DOCX exports, always-on infrastructure and independent production security/load/restore acceptance. Source evidence and predictions must remain labeled accordingly.
+Still requiring separate work: live operator-authorized Meta acceptance, native YouTube OAuth/token refresh, complete social retention/erasure policy, representative sentiment analysis, competitor access, post/ads publishing, attribution/causal outcomes, broader forecasting, social PDF/DOCX exports, always-on infrastructure and independent production security/load/restore acceptance. Source evidence and predictions must remain labeled accordingly.

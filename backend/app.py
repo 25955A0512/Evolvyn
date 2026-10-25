@@ -715,6 +715,7 @@ async def schedule_loop():
             await dispatch_pending()
             await AUTOMATIONS.tick()
             await MCP_REGISTRY.health_tick()
+            await INSTAGRAM_OAUTH.refresh_tick()
             if time.monotonic()-getattr(app.state,"last_trash_cleanup",0)>60:
                 await asyncio.to_thread(TRASH.purge)
                 app.state.last_trash_cleanup=time.monotonic()
@@ -1025,3 +1026,7 @@ from backend.social_growth import SocialGrowth,Scoped as SocialScope,Result as S
 SOCIAL_GROWTH=SocialGrowth({name:globals()[name] for name in ('get','save','listing','conn','POLICY','TOOL_PLUGINS','MCP_REGISTRY','VAULT','GRAPH_HARNESS')})
 REGISTRY.register(Tool('sync_growth_social','Refresh an explicitly bound read-only social account and persist a verified observation; no external writes',SocialScope,SocialResult,SOCIAL_GROWTH.collect,timeout=40,idempotent=True))
 SOCIAL_GROWTH.install(app,auth)
+
+from backend.instagram_oauth import InstagramOAuth
+INSTAGRAM_OAUTH=InstagramOAuth({name:globals()[name] for name in ('get','save','listing','conn','POLICY','VAULT','MCP_REGISTRY')},SOCIAL_GROWTH)
+INSTAGRAM_OAUTH.install(app,auth)

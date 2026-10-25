@@ -101,3 +101,7 @@ Vercel/Render proxy timeouts may interrupt streams; the existing UI reconnects t
 - `.venv/bin/python tests/live_managed_hosting.py`: starts actual API and compiler processes with managed-hosting-style variables; verifies SQL health, assigned ports, exact hosts, HTTPS callback metadata, encrypted vault custody through an actual API restart, compiler authentication/compilation, clean shutdown and nonzero invalid-configuration exit. Does not deploy to Render/Vercel.
 - `npm --prefix frontend run build`: current frontend type/production build.
 - Existing identity, OAuth, tenant, approval and execution suites remain required.
+
+## Instagram business connector OAuth
+
+Configure the Instagram App ID/secret once on the Render API; end users authorize their own professional accounts using Connect with Instagram. The exact deployed redirect is `https://evolvyn.vercel.app/api/integrations/instagram/callback`. See [Instagram OAuth setup](INSTAGRAM_OAUTH.md) for environment names, Meta access/review requirements, long-lived renewal, credential custody and live acceptance boundaries.

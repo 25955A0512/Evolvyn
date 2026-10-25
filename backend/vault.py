@@ -80,6 +80,19 @@ class Vault:
             c.execute("INSERT INTO records(id,owner,kind,body) VALUES (%s,%s,'vault_secret',%s) ON CONFLICT(id) DO UPDATE SET body=EXCLUDED.body WHERE records.owner=EXCLUDED.owner", (id, owner, json.dumps(data)))
         return self.metadata({'id': id, 'body': data})
 
+    def rotate_for_service(self,owner,id,value,expected_version):
+        """Renew an existing grant without reviving disabled or concurrently replaced keys."""
+        self.policy.require(owner,'manage_vault')
+        if not isinstance(value,str) or not 8<=len(value)<=8192:raise HTTPException(422,'Invalid renewed credential')
+        with self.conn() as c:
+            row=c.execute("SELECT body FROM records WHERE owner=%s AND id=%s AND kind='vault_secret' FOR UPDATE",(owner,id)).fetchone()
+            if not row or not row['body']['enabled'] or row['body']['provider']!='mcp' or row['body']['version']!=expected_version:raise HTTPException(409,'Credential was revoked or changed during renewal')
+            data=row['body'];data.update(version=expected_version+1,updated_at=now())
+            clear=json.dumps({'owner':owner,'id':id,'provider':'mcp','value':value}).encode()
+            data['ciphertext']=self.cipher().encrypt(clear).decode()
+            c.execute('UPDATE records SET body=%s WHERE owner=%s AND id=%s',(json.dumps(data),owner,id))
+        return self.metadata({'id':id,'body':data})
+
     def reveal_for_service(self, owner, id, provider):
         with self.conn() as c:
             row = c.execute("SELECT body FROM records WHERE owner=%s AND id=%s AND kind='vault_secret'", (owner, id)).fetchone()

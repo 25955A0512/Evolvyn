@@ -51,6 +51,7 @@ class SocialGrowth:
         if write:self.s['POLICY'].require(owner,'write')
         return source
     def binding(self,owner,source):
+        if source.get('oauth_expires_at') and datetime.fromisoformat(source['oauth_expires_at'])<=datetime.now(timezone.utc):raise HTTPException(409,'Instagram authorization expired; connect Instagram again')
         spec=self.s['TOOL_PLUGINS'].validate(owner,source['tool'],{'account_id':source['account_id'],'conversation_id':source['conversation']})
         if spec['adapter']!='mcp' or spec['risk']!='read':raise HTTPException(422,'Select a registered read-only MCP account observation tool')
         return fingerprint(spec)
@@ -126,6 +127,16 @@ class SocialGrowth:
         run=await self.s['GRAPH_HARNESS'].start(owner,source['graph_id'],source['conversation'])
         with self.s['conn']() as c:c.execute("UPDATE records SET body=body || %s::jsonb WHERE owner=%s AND id=%s",(json.dumps({'social_queued_at':now(),'social_source_id':id}),owner,run['id']))
         return run
+    async def create_native(self,owner,body):
+        s=self.s
+        conv=s['get'](owner,body.conversation_id,'conversation');s['POLICY'].require(owner,'manage_registry');s['POLICY'].require(owner,'manage_vault');s['POLICY'].data(owner,conv,'mcp')
+        s['VAULT'].reveal_for_service(owner,body.credential_id,'mcp')
+        server=s['save'](owner,'mcp_server',{'name':body.name,'transport':'stdio','profile':body.profile,'credential_id':body.credential_id,'enabled':True,'risk':'read','timeout_seconds':30,'tools':[],'project_id':conv.get('project_id')})
+        checked=await s['MCP_REGISTRY'].probe(owner,server['id'])
+        if checked['status']!='healthy':raise HTTPException(502,'Social MCP discovery failed. Check the private credential and service setup.')
+        name='social_'+uuid4().hex[:12]
+        tool=s['save'](owner,'registered_tool',{'name':name,'description':'Authorized social-v1 account observations','adapter':'mcp','server_id':server['id'],'remote_tool':'social_account_snapshot','capabilities':['business.social.read','research.comments.read'],'entities':['social_account','post'],'enabled':True})
+        return self.create(owner,Source(conversation_id=body.conversation_id,tool=name,provider='youtube' if body.profile=='youtube_social' else 'instagram',account_id=body.account_id,name=body.name),managed_server_id=server['id'],managed_tool_id=tool['id'])
     def install(self,app,auth):
         s=self.s
         @app.get('/api/growth/social')
@@ -156,14 +167,7 @@ class SocialGrowth:
         def create(body:Source,owner=Depends(auth)):return self.create(owner,body)
         @app.post('/api/growth/social/native')
         async def native(body:Native,owner=Depends(auth)):
-            conv=s['get'](owner,body.conversation_id,'conversation');s['POLICY'].require(owner,'manage_registry');s['POLICY'].require(owner,'manage_vault');s['POLICY'].data(owner,conv,'mcp')
-            s['VAULT'].reveal_for_service(owner,body.credential_id,'mcp')
-            server=s['save'](owner,'mcp_server',{'name':body.name,'transport':'stdio','profile':body.profile,'credential_id':body.credential_id,'enabled':True,'risk':'read','timeout_seconds':30,'tools':[],'project_id':conv.get('project_id')})
-            checked=await s['MCP_REGISTRY'].probe(owner,server['id'])
-            if checked['status']!='healthy':raise HTTPException(502,'Social MCP discovery failed. Check the private credential and service setup.')
-            name='social_'+uuid4().hex[:12]
-            tool=s['save'](owner,'registered_tool',{'name':name,'description':'Authorized social-v1 account observations','adapter':'mcp','server_id':server['id'],'remote_tool':'social_account_snapshot','capabilities':['business.social.read','research.comments.read'],'entities':['social_account','post'],'enabled':True})
-            return self.create(owner,Source(conversation_id=body.conversation_id,tool=name,provider='youtube' if body.profile=='youtube_social' else 'instagram',account_id=body.account_id,name=body.name),managed_server_id=server['id'],managed_tool_id=tool['id'])
+            return await self.create_native(owner,body)
         @app.post('/api/growth/social/{id}/sync',status_code=202)
         async def sync(id:str,owner=Depends(auth)):return await self.queue(owner,id)
         @app.post('/api/growth/social/{id}/monitor')
@@ -181,9 +185,12 @@ class SocialGrowth:
             source['enabled']=False;s['save'](owner,'social_source',{k:v for k,v in source.items() if k!='id'},id)
             with s['conn']() as c:
                 c.execute("UPDATE records SET body=body || '{\"enabled\":false}'::jsonb WHERE owner=%s AND kind='schedule' AND body->>'social_source_id'=%s",(owner,id))
+                if source.get('oauth_provider'):
+                    server=c.execute("SELECT body FROM records WHERE owner=%s AND id=%s",(owner,source['managed_server_id'])).fetchone()
+                    if server and server['body'].get('credential_id'):c.execute("UPDATE records SET body=(body-'ciphertext') || '{\"enabled\":false}'::jsonb WHERE owner=%s AND id=%s AND kind='vault_secret'",(owner,server['body']['credential_id']))
                 for key in ('managed_server_id','managed_tool_id'):
                     if source.get(key):c.execute("UPDATE records SET body=body || '{\"enabled\":false}'::jsonb WHERE owner=%s AND id=%s",(owner,source[key]))
-            return {'disconnected':True,'detail':'Polling stopped. History retained; remove or revoke the provider token separately in the vault/provider settings.'}
+            return {'disconnected':True,'detail':'Polling stopped. History retained. OAuth credentials are erased locally; revoke the provider app grant in Instagram settings if required. Manual tokens remain in the vault until separately revoked.'}
         @app.post('/api/growth/social/{id}/review',status_code=202)
         async def review(id:str,body:Review,owner=Depends(auth)):
             source=self.scope(owner,id,True);history=self.history(owner,source)

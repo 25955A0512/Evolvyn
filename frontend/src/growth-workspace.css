@@ -851,3 +851,19 @@
     max-width: 100%;
   }
 }
+.social-oauth > label {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.social-oauth input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  margin: 0;
+  padding: 0;
+}
+.social-oauth .growth-section-heading > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}

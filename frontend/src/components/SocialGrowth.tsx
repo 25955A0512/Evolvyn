@@ -30,7 +30,9 @@ export function SocialGrowth({
     [adding, setAdding] = useState(false),
     [kind, setKind] = useState("instagram_social"),
     [run, setRun] = useState<any>(null),
-    [mode, setMode] = useState("default");
+    [mode, setMode] = useState("default"),
+    [instagram, setInstagram] = useState<any>(null),
+    [comments, setComments] = useState(false);
   const watch = useRef<AbortController | null>(null),
     scope = useRef(conversationId);
   async function load() {
@@ -39,13 +41,15 @@ export function SocialGrowth({
       setSources([]);
       return;
     }
-    const [a, b, c, d] = await Promise.all([
+    const [a, b, c, d, ig] = await Promise.all([
       api.json("/growth/social?conversation_id=" + encodeURIComponent(id)),
       api.json("/tool-registry"),
       api.json("/vault").catch(() => null),
       api.json("/schedules"),
+      api.json("/integrations/instagram"),
     ]);
     if (scope.current !== id) return;
+    setInstagram(ig);
     setSources(a);
     setTools(b.filter((t: any) => t.adapter === "mcp" && t.risk === "read"));
     setCredentials(
@@ -266,8 +270,9 @@ export function SocialGrowth({
           <p className="growth-help">
             Save the authorized provider access token in Key vault as an MCP
             credential, then select it here. No token goes in this form or tool
-            arguments. Native account OAuth refresh is not implemented; expired
-            tokens must be replaced and the source reconnected.
+            arguments. For manual credentials, expired tokens must be replaced
+            and the source reconnected. Instagram users can instead use Connect
+            with Instagram below.
           </p>
           <details>
             <summary>Provider permissions and collection limits</summary>
@@ -296,6 +301,70 @@ export function SocialGrowth({
             Register social source
           </button>
         </form>
+      )}
+      {conversationId && (
+        <section className="growth-panel social-oauth">
+          <div className="growth-section-heading">
+            <div>
+              <h3>Connect Instagram directly</h3>
+              <p>
+                Authorize your professional account with Instagram. Evolvyn
+                stores the token securely and creates the account connection;
+                you do not need to copy a token.
+              </p>
+            </div>
+            <button
+              className="studio-primary"
+              disabled={busy || !instagram?.configured}
+              onClick={() =>
+                act(async () => {
+                  const result = await api.json(
+                    "/integrations/instagram/authorize",
+                    {
+                      method: "POST",
+                      body: JSON.stringify({
+                        conversation_id: conversationId,
+                        read_comments: comments,
+                      }),
+                    },
+                  );
+                  window.location.assign(result.authorize_url);
+                })
+              }
+            >
+              Connect with Instagram
+            </button>
+          </div>
+          <label>
+            <input
+              type="checkbox"
+              checked={comments}
+              onChange={(e) => setComments(e.target.checked)}
+            />
+            Request access to comment text (optional permission)
+          </label>
+          <p className="growth-help">{instagram?.token_lifecycle}</p>
+          {instagram && !instagram.configured && (
+            <p role="status">
+              Instagram connection needs one-time administrator setup.
+              Individual users do not need to create developer applications.
+            </p>
+          )}
+          {instagram?.setup && !instagram.configured && (
+            <details>
+              <summary>Administrator: configure Instagram OAuth</summary>
+              <p>{instagram.setup.instructions}</p>
+              <p>
+                Redirect URI: <code>{instagram.callback_url}</code>
+              </p>
+              <p>
+                Private Render variables:{" "}
+                <code>{instagram.setup.variables.join(", ")}</code>. Never enter
+                app secrets in the frontend or chat.
+              </p>
+            </details>
+          )}
+        </section>
       )}
       {!sources.length && conversationId && !adding && (
         <div className="growth-panel growth-empty">
@@ -381,6 +450,17 @@ export function SocialGrowth({
                 Sync account
               </button>
             </div>
+            {s.oauth_provider && (
+              <p className="growth-help">
+                Instagram authorization expires {date(s.oauth_expires_at)}. The
+                running backend renews eligible grants before expiry. Reconnect
+                if the grant expires or is revoked. Paused monitoring stays
+                paused.
+              </p>
+            )}
+            {s.oauth_refresh_error && (
+              <p className="error">{s.oauth_refresh_error}</p>
+            )}
             {s.connection_issue && (
               <p className="error">{s.connection_issue}</p>
             )}
@@ -657,7 +737,7 @@ export function SocialGrowth({
                       method: "DELETE",
                     });
                     setNotice(
-                      "Disconnected: polling stopped. Saved evidence retained; revoke the token separately if required.",
+                      "Disconnected: polling stopped. Saved evidence retained. OAuth credentials are erased locally; revoke the provider grant separately if required. Manual tokens stay in the vault until revoked.",
                     );
                   })
                 }
