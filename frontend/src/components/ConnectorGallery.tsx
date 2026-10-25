@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { UiIcon } from "./UiIcon";
 import { serviceLogos } from "../assets/connector-logos";
+import { instagramLogo } from "../assets/instagram-logo";
 import { Plus, Search, ArrowUpRight } from "lucide-react";
 export function ConnectorArt({
   name,
@@ -70,7 +71,7 @@ export function ConnectorArt({
       {logo ? (
         <img
           className="connector-logo"
-          src={serviceLogos[logo]}
+          src={logo === "instagram" ? instagramLogo : serviceLogos[logo]}
           width={size + 6}
           height={size + 6}
           alt=""

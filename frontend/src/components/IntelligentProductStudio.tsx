@@ -98,7 +98,9 @@ export function IntelligentProductStudio({
     [file, setFile] = useState("frontend/src/main.jsx"),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const submitLock = useRef(false);
   const watches = useRef<AbortController[]>([]),
     bottom = useRef<HTMLDivElement>(null);
   async function catalog() {
@@ -142,7 +144,7 @@ export function IntelligentProductStudio({
     setNotice("");
     setArtifactsOpen(false);
   }
-  async function load(id: string) {
+  async function load(id: string, knownBuilds?: any[]) {
     detach();
     const current = generation.current;
     selected.current = id;
@@ -154,11 +156,12 @@ export function IntelligentProductStudio({
     const [p, h, b] = await Promise.all([
       api.json("/studio/products/" + id),
       api.json("/studio/products/" + id + "/agent-history"),
-      catalog(),
+      knownBuilds ? Promise.resolve(knownBuilds) : api.json("/studio/builds"),
     ]);
     if (current !== generation.current) return;
     remember(id);
     setProduct(p);
+    setBuilds(b);
     setHistory(h);
 
     const latest = h.find((r: any) =>
@@ -166,9 +169,8 @@ export function IntelligentProductStudio({
     );
     setRun(latest || null);
     setBuild(
-      b.builds.find(
-        (row: any) => row.spec_id === id && belongsToRun(row, latest),
-      ) || null,
+      b.find((row: any) => row.spec_id === id && belongsToRun(row, latest)) ||
+        null,
     );
     if (latest) {
       setAgents(
@@ -201,7 +203,7 @@ export function IntelligentProductStudio({
     mounted.current = true;
     setRestoring(true);
     catalog()
-      .then(async ({ products: p }) => {
+      .then(async ({ products: p, builds: b }) => {
         if (!active) return;
         const available = p.filter(
           (row: any) => row.project_id === (projectId || null),
@@ -213,7 +215,7 @@ export function IntelligentProductStudio({
             ? null
             : available.find((row: any) => row.id === requested)?.id ||
               (requested ? null : available[0]?.id);
-        if (id) await load(id);
+        if (id) await load(id, b);
         else {
           selected.current = null;
           setProduct(null);
@@ -271,6 +273,7 @@ export function IntelligentProductStudio({
     if (stickToBottom.current)
       bottom.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [
+    pendingMessage,
     interview?.output,
     interview?.state,
     run?.state,
@@ -356,37 +359,47 @@ export function IntelligentProductStudio({
   async function send() {
     let p = product;
     const message = text.trim();
-    if (!message) return;
-    if (!p) {
-      p = await api.json("/studio/products", {
+    if (!message || submitLock.current) return;
+    submitLock.current = true;
+    setPendingMessage(message);
+    setText("");
+    try {
+      if (!p) {
+        p = await api.json("/studio/products", {
+          method: "POST",
+          body: JSON.stringify({
+            name:
+              message.replace(/\s+/g, " ").split(/[.!?]/)[0].slice(0, 70) ||
+              message.slice(0, 70),
+            goal: message,
+            project_id: projectId || null,
+          }),
+        });
+        selected.current = p.id;
+        remember(p.id);
+        setProduct(p);
+        setHistory([]);
+        setTab("overview");
+        setProducts((rows) => [p, ...rows.filter((row) => row.id !== p.id)]);
+      }
+      const r = await api.json("/studio/products/" + p.id + "/messages", {
         method: "POST",
         body: JSON.stringify({
-          name:
-            message.replace(/\s+/g, " ").split(/[.!?]/)[0].slice(0, 70) ||
-            message.slice(0, 70),
-          goal: message,
-          project_id: projectId || null,
+          spec_id: p.id,
+          revision: p.revision,
+          text: message,
+          mode,
+          intent: p.ready ? "chat" : "plan",
         }),
       });
-      selected.current = p.id;
-      remember(p.id);
-      setProduct(p);
-      setHistory([]);
-      setTab("overview");
-      await catalog();
+      follow(r, true);
+    } catch (e) {
+      if (mounted.current) setText((draft) => draft || message);
+      throw e;
+    } finally {
+      submitLock.current = false;
+      if (mounted.current) setPendingMessage(null);
     }
-    const r = await api.json("/studio/products/" + p.id + "/messages", {
-      method: "POST",
-      body: JSON.stringify({
-        spec_id: p.id,
-        revision: p.revision,
-        text: message,
-        mode,
-        intent: p.ready ? "chat" : "plan",
-      }),
-    });
-    setText("");
-    follow(r, true);
   }
   async function confirmPlan() {
     const result = await api.json(
@@ -418,6 +431,7 @@ export function IntelligentProductStudio({
   }
   const running =
     busy ||
+    !!pendingMessage ||
     [run, interview].some((r) => r && ["CREATED", "RUNNING"].includes(r.state));
   const proposal = output(interview, "proposal");
   const contracts = output(run, "contracts");
@@ -604,29 +618,39 @@ export function IntelligentProductStudio({
             {restoring ? (
               <p role="status">Restoring your product workspace…</p>
             ) : !product ? (
-              <div className="product-chat-welcome">
-                <span className="product-welcome-symbol">
-                  <UiIcon name="code" size={32} />
-                </span>
-                <h2>What would you like to build?</h2>
-                <p>
-                  Start with your idea. Your agents will propose a setup, ask
-                  questions here, and turn your confirmed plan into project
-                  files.
-                </p>
-                <div className="product-idea-examples">
-                  {[
-                    "Build an e-commerce product catalog",
-                    "Create a customer support workspace",
-                    "Build an inventory management app",
-                  ].map((idea) => (
-                    <button key={idea} onClick={() => setText(idea)}>
-                      {idea}
-                      <UiIcon name="arrow-up" size={14} />
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <>
+                {pendingMessage ? (
+                  <article className="product-chat user" role="status">
+                    <small>You · sending</small>
+                    <p>{pendingMessage}</p>
+                    <span>Saving your message and starting the agent…</span>
+                  </article>
+                ) : (
+                  <div className="product-chat-welcome">
+                    <span className="product-welcome-symbol">
+                      <UiIcon name="code" size={32} />
+                    </span>
+                    <h2>What would you like to build?</h2>
+                    <p>
+                      Start with your idea. Your agents will propose a setup,
+                      ask questions here, and turn your confirmed plan into
+                      project files.
+                    </p>
+                    <div className="product-idea-examples">
+                      {[
+                        "Build an e-commerce product catalog",
+                        "Create a customer support workspace",
+                        "Build an inventory management app",
+                      ].map((idea) => (
+                        <button key={idea} onClick={() => setText(idea)}>
+                          {idea}
+                          <UiIcon name="arrow-up" size={14} />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             ) : (
               <>
                 {transcript.reverse().map((r) => (
@@ -653,6 +677,11 @@ export function IntelligentProductStudio({
                             "No validated model reply is available for this turn."}
                         </p>
                       )}
+                      {r.state === "FAILED" && (
+                        <a href="/keyvault">
+                          Check the effective agent model in Key vault
+                        </a>
+                      )}
                       {r.state === "FAILED" && interviewReply(r) && (
                         <p className="error">
                           Requirement proposals were not validated. No changes
@@ -663,7 +692,14 @@ export function IntelligentProductStudio({
                   </div>
                 ))}
 
-                {!transcript.length && (
+                {pendingMessage && (
+                  <article className="product-chat user" role="status">
+                    <small>You · sending</small>
+                    <p>{pendingMessage}</p>
+                    <span>Saving your message and starting the agent…</span>
+                  </article>
+                )}
+                {!transcript.length && !pendingMessage && product && (
                   <article className="product-chat user">
                     <small>You</small>
                     <p>{product.goal}</p>
@@ -908,13 +944,24 @@ export function IntelligentProductStudio({
             className="product-conversation-composer"
             onSubmit={(e) => {
               e.preventDefault();
-              act(send);
+              if (!running && !restoring) act(send);
             }}
           >
             <textarea
               aria-label="Message product agents"
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.nativeEvent.isComposing
+                ) {
+                  e.preventDefault();
+                  if (!e.repeat && !running && !restoring)
+                    e.currentTarget.form?.requestSubmit();
+                }
+              }}
               placeholder={
                 product
                   ? "Ask a question or refine your product…"
@@ -953,8 +1000,9 @@ export function IntelligentProductStudio({
             </div>
           </form>
           <small>
-            Progress and drafts are saved. Source writes require approval;
-            provider failures are shown here.
+            Enter to send · Shift+Enter for a new line. Progress and drafts are
+            saved. Source writes require approval; provider failures are shown
+            here.
           </small>
         </section>
         <section className="product-deliverables" hidden={!artifactsOpen}>

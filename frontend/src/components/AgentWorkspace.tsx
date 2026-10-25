@@ -43,7 +43,9 @@ function VaultPanel({ api }: { api: API }) {
     [rotation, setRotation] = useState<any>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState("");
+    [notice, setNotice] = useState(""),
+    [modelCatalogs, setModelCatalogs] = useState<Record<string, any[]>>({}),
+    [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
   async function load() {
     setData(await api.json("/vault"));
   }
@@ -93,7 +95,9 @@ function VaultPanel({ api }: { api: API }) {
             <p>
               A single unassigned Gemini key becomes the workspace default
               automatically. Explicit per-agent routes remain in force until you
-              choose “Use for all agents”.
+              choose “Use for all agents”. A new key does not change a saved
+              model. If a model is unavailable, load the models returned by
+              Gemini, select one and apply it here.
             </p>
             {data.credentials
               .filter((c: any) => c.enabled && c.provider !== "mcp")
@@ -102,6 +106,55 @@ function VaultPanel({ api }: { api: API }) {
                   <strong>
                     {c.name} · {c.provider}
                   </strong>
+                  {c.provider === "gemini" && (
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          action(async () => {
+                            const result = await api.json(
+                              "/vault/credentials/" + c.id + "/models",
+                              { method: "POST" },
+                            );
+                            setModelCatalogs((rows) => ({
+                              ...rows,
+                              [c.id]: result.models,
+                            }));
+                            if (!result.models.length)
+                              throw Error(
+                                "Gemini returned no generateContent models for this key.",
+                              );
+                          }, "Models loaded from Gemini. Select a model, then use it for all agents and test the route.")
+                        }
+                      >
+                        Load available models
+                      </button>
+                      {modelCatalogs[c.id] && (
+                        <label>
+                          Available Gemini model
+                          <select
+                            aria-label={"Available Gemini model: " + c.name}
+                            value={selectedModels[c.id] || ""}
+                            onChange={(e) =>
+                              setSelectedModels((rows) => ({
+                                ...rows,
+                                [c.id]: e.target.value,
+                              }))
+                            }
+                          >
+                            <option value="">
+                              Choose a provider-listed model
+                            </option>
+                            {modelCatalogs[c.id].map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.id}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </>
+                  )}
                   <button
                     disabled={busy}
                     onClick={() =>
@@ -112,6 +165,9 @@ function VaultPanel({ api }: { api: API }) {
                             provider: c.provider,
                             credential_id: c.id,
                             reset_agent_overrides: true,
+                            ...(selectedModels[c.id]
+                              ? { model: selectedModels[c.id] }
+                              : {}),
                           }),
                         });
                       }, "Workspace default saved. All agents now inherit this key.")
@@ -126,7 +182,8 @@ function VaultPanel({ api }: { api: API }) {
               {Object.entries(data.effective_routes || {}).map(
                 ([agent, route]: [string, any]) => (
                   <p key={agent}>
-                    {data.agents[agent]}: {route.provider}
+                    {data.agents[agent]}: {route.provider} ·{" "}
+                    {route.resolved_model || "no model"}
                     {route.inferred
                       ? " · saved key selected automatically"
                       : ""}

@@ -146,7 +146,24 @@ def install(app, auth, vault):
         try: vault.cipher(); ready = True
         except HTTPException: ready = False
         agents={**AGENTS,**{row['body']['agent']:row['body']['name'] for row in vault.rows(owner,'agent_definition')}}
-        return {'credentials': entries, 'bindings': vault.bindings(owner), 'agents': agents,'effective_routes':{agent:route or {'provider':'local','agent':agent} for agent,route in vault.effective_routes(owner,agents).items()}, 'ready': ready, 'encryption': 'Fernet authenticated encryption; master key outside PostgreSQL'}
+        from backend.providers import PROVIDERS
+        routes={}
+        for agent,route in vault.effective_routes(owner,agents).items():
+            route=route or {'provider':'local','agent':agent}
+            config=PROVIDERS.get(route['provider'])
+            resolved=(route.get('model') or os.getenv(config['model_env'],config['default_model'])) if config else None
+            routes[agent]={**route,'resolved_model':resolved}
+        return {'credentials': entries, 'bindings': vault.bindings(owner), 'agents': agents,'effective_routes':routes, 'ready': ready, 'encryption': 'Fernet authenticated encryption; master key outside PostgreSQL'}
+
+    @app.post('/api/vault/credentials/{id}/models')
+    async def discover_models(id:str,owner=Depends(auth)):
+        vault.policy.require(owner,'manage_vault')
+        if not vault.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+        credential=vault.reveal_for_service(owner,id,'gemini')
+        from backend.gemini_gateway import available_models
+        from backend.model_errors import ModelFailure
+        try:return await available_models(credential)
+        except ModelFailure as error:raise HTTPException(error.status_code,str(error)) from None
 
     @app.put('/api/vault/workspace-default')
     def workspace_default(body:WorkspaceDefault,owner=Depends(auth)):

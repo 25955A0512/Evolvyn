@@ -1207,3 +1207,6 @@
 .oauth-availability { font-size: 13px; line-height: 1.6; color: var(--muted, #637266); margin: 0 0 12px; }
 .oauth-availability:empty { display: none; }
 .account-access .oauth-retry { background: transparent; color: #315e45; width: auto; padding: 5px 0; font-size: 13px; }
+.default-key-choice label { min-width: 0; flex: 1 1 260px; max-width: 100%; }
+.default-key-choice select { max-width: 100%; }
+.default-key-choice strong { overflow-wrap: anywhere; }
