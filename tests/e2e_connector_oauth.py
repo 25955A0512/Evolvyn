@@ -30,6 +30,20 @@ try:
    target=params['redirect_uri'][0]+'?'+urlencode(callback)
    route.fulfill(status=200,content_type='text/html',body='<script>location.href='+__import__('json').dumps(target)+'</script>')
   for pattern in ['https://accounts.google.com/o/oauth2/v2/auth**','https://slack.com/oauth/v2/authorize**','https://synthetic-store.myshopify.com/admin/oauth/authorize**']:page.route(pattern,consent)
+  # Load the registry first: no AgentWorkspace CSS may have been cached.
+  page.goto(base+'/mcp-registry')
+  accounts=page.get_by_role('region',name='OAuth accounts')
+  accounts.locator('.dashboard-connector-card').filter(has=page.get_by_role('heading',name='Google Drive',exact=True)).get_by_role('button',name='Setup',exact=True).click()
+  dialog=page.get_by_role('dialog',name='Google Drive setup');expect(dialog).to_be_visible()
+  assert dialog.get_by_label('Redirect URL').evaluate("e=>getComputedStyle(e.parentElement).display")=='grid'
+  assert dialog.get_by_label('Redirect URL').evaluate("e=>e.getBoundingClientRect().width")>300
+  for width,height in [(1440,650),(390,700)]:
+   page.set_viewport_size({'width':width,'height':height})
+   action=dialog.get_by_role('button',name='Continue to Google Drive')
+   expect(action).to_be_enabled();expect(action).to_be_in_viewport()
+   assert dialog.evaluate('e=>e.scrollWidth<=e.clientWidth')
+  page.screenshot(path=str(out/'registry-drive-setup-mobile.png'))
+  page.keyboard.press('Escape');page.set_viewport_size({'width':1440,'height':960})
   names={'google_drive':'Google Drive','slack':'Slack','shopify':'Shopify'}
   for provider,name in names.items():
    page.goto(base+'/integrations');page.get_by_role('button',name='Connect '+name,exact=True).click()

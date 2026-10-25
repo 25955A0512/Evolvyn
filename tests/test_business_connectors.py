@@ -192,3 +192,18 @@ def test_existing_grant_can_renew_for_authorized_editor_without_vault_access(c,m
         with pytest.raises(Exception) as error:module.POLICY.require(c.org,'manage_vault')
         assert error.value.status_code==403
     finally:ACTOR.reset(actor)
+
+def test_drive_reuses_complete_google_web_client_but_keeps_separate_consent(c,monkeypatch):
+    for suffix in ('_CLIENT_ID','_CLIENT_SECRET'):monkeypatch.delenv('OAUTH_GOOGLE_DRIVE'+suffix)
+    monkeypatch.setenv('OAUTH_GOOGLE_CLIENT_ID','synthetic-shared-google-client')
+    monkeypatch.setenv('OAUTH_GOOGLE_CLIENT_SECRET','synthetic-shared-google-secret')
+    status=c.get('/api/integrations/business-connections').json()['google_drive']
+    assert status['configured'] and status['setup']['variables']==['OAUTH_GOOGLE_CLIENT_ID','OAUTH_GOOGLE_CLIENT_SECRET']
+    r=c.post('/api/integrations/google_drive/authorize',json={});r.raise_for_status()
+    query=parse_qs(urlparse(r.json()['authorize_url']).query)
+    assert query['client_id']==['synthetic-shared-google-client']
+    assert query['redirect_uri']==['http://localhost:3000/api/integrations/google_drive/callback']
+    assert query['scope']==['https://www.googleapis.com/auth/drive.readonly'] and query['prompt']==['consent']
+    monkeypatch.setenv('OAUTH_GOOGLE_DRIVE_CLIENT_ID','synthetic-dedicated-but-incomplete')
+    assert not c.get('/api/integrations/business-connections').json()['google_drive']['configured']
+    assert c.post('/api/integrations/google_drive/authorize',json={}).status_code==503

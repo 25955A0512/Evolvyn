@@ -3,6 +3,7 @@ import type { client } from "../api";
 import { ConnectorArt } from "./ConnectorGallery";
 import { OAuthSetup } from "./OAuthSetup";
 import { WorkspaceDialog } from "./WorkspaceDialog";
+import "../dashboard-refresh.css";
 const descriptions: Record<string, string> = {
   github: "Public repositories and issues.",
   google_drive: "Files and documents · read only.",
@@ -70,17 +71,25 @@ export function AuthorizedConnections({
   }
   function connect(id: string) {
     act(async () => {
-      const result = await api.json("/integrations/" + id + "/authorize", {
-        method: "POST",
-        ...(id === "github"
-          ? {}
-          : {
-              body: JSON.stringify(
-                id === "shopify" ? { shop: shop.trim().toLowerCase() } : {},
-              ),
-            }),
-      });
-      location.assign(result.authorize_url);
+      try {
+        const result = await api.json("/integrations/" + id + "/authorize", {
+          method: "POST",
+          ...(id === "github"
+            ? {}
+            : {
+                body: JSON.stringify(
+                  id === "shopify" ? { shop: shop.trim().toLowerCase() } : {},
+                ),
+              }),
+        });
+        location.assign(result.authorize_url);
+      } catch (e: any) {
+        if (e.status === 503) {
+          setSetup(id);
+          await load();
+        }
+        throw e;
+      }
     });
   }
   const names: Record<string, string> = {
@@ -153,9 +162,7 @@ export function AuthorizedConnections({
                   <button
                     disabled={busy || !provider}
                     onClick={() =>
-                      provider.configured && id !== "shopify"
-                        ? connect(id)
-                        : setSetup(id)
+                      id !== "shopify" ? connect(id) : setSetup(id)
                     }
                   >
                     {active ? "Reconnect " : "Connect "}
@@ -229,13 +236,21 @@ export function AuthorizedConnections({
           ) : setup === "github" ? (
             <OAuthSetup provider="github" />
           ) : (
-            <>
+            <div className="connector-setup-body">
+              <p role="status">
+                {data?.[setup]?.configured
+                  ? "Ready to connect. Continue to authorize your account."
+                  : "App credentials are missing from the running API. Add the variables below in Render, then redeploy."}
+              </p>
               {instructions[setup] && (
-                <ol className="connector-setup-steps">
-                  {instructions[setup].map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
+                <details>
+                  <summary>Provider setup steps</summary>
+                  <ol className="connector-setup-steps">
+                    {instructions[setup].map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                </details>
               )}
               <a
                 href={data?.[setup]?.setup.console_url}
@@ -279,24 +294,23 @@ export function AuthorizedConnections({
                   />
                 </label>
               )}
-              <button
-                className="studio-primary"
-                disabled={
-                  busy ||
-                  !data?.[setup]?.configured ||
-                  (setup === "shopify" && !shop.trim())
-                }
-                onClick={() => connect(setup)}
-              >
-                Continue to {names[setup]}
-              </button>
-              {!data?.[setup]?.configured && (
-                <p className="dashboard-footnote">
-                  Add the app credentials in Render, redeploy, then refresh this
-                  page.
-                </p>
-              )}
-            </>
+              <footer className="connector-oauth-actions">
+                <button disabled={busy} onClick={() => act(load)}>
+                  Refresh status
+                </button>
+                <button
+                  className="studio-primary"
+                  disabled={
+                    busy ||
+                    !data?.[setup]?.configured ||
+                    (setup === "shopify" && !shop.trim())
+                  }
+                  onClick={() => connect(setup)}
+                >
+                  Continue to {names[setup]}
+                </button>
+              </footer>
+            </div>
           )}
           {error && (
             <p className="error" role="alert">

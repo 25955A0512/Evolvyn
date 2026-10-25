@@ -927,3 +927,51 @@
   color: #65766c;
   padding: 12px 0;
 }
+/* Account setup also opens directly from the lazy-loaded MCP registry. */
+.connector-setup-body {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.connector-setup-body > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.connector-setup-body label {
+  display: grid;
+  gap: 7px;
+  font-weight: 600;
+}
+.connector-setup-body input,
+.connector-setup-body textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 11px;
+  border: 1px solid #dfe5dc;
+  border-radius: 10px;
+  font: inherit;
+  resize: vertical;
+}
+.connector-setup-body textarea {
+  white-space: pre;
+  overflow-x: auto;
+}
+.connector-setup-body details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.connector-oauth-actions {
+  position: sticky;
+  bottom: -27px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0 -8px -27px;
+  padding: 16px 8px 27px;
+  background: white;
+  border-top: 1px solid #e6eae5;
+}

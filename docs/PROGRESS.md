@@ -1,6 +1,6 @@
 # Implementation checklist
 
-Account connectors: added Google Drive, Slack and Shopify read-only OAuth into the existing vault/MCP registry, retaining GitHub OAuth. Healthy servers are promoted and setup/failed servers collapsed. Drive grants renew; Slack/Shopify expiry requires reconnect. Provider application registration and live approval/acceptance remain operator steps. See [account connector setup](ACCOUNT_CONNECTOR_OAUTH.md).
+Account connectors: registry-first setup layout and visible authorization actions are fixed; Drive can reuse a complete Google sign-in Web client configuration while keeping separate consent. Added Google Drive, Slack and Shopify read-only OAuth into the existing vault/MCP registry, retaining GitHub OAuth. Healthy servers are promoted and setup/failed servers collapsed. Drive grants renew; Slack/Shopify expiry requires reconnect. Provider application registration and live approval/acceptance remain operator steps. See [account connector setup](ACCOUNT_CONNECTOR_OAUTH.md).
 
 Dashboard refresh: compact key vault dialogs and route controls, connected/discover/tools views, focused discussion composer, configurable Growth Insights widgets with real product chart/table, and schedule summaries are implemented. Browser acceptance covers the existing growth approval flow and mobile layouts with controlled provider boundaries. See [dashboard scope and checks](DASHBOARD_REFRESH.md).
 

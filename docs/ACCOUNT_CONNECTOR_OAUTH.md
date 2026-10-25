@@ -36,7 +36,7 @@ Tools: `github_repositories`, `github_repository`, `github_issues`. Public repos
 3. In Google Auth Platform, configure Branding, Audience and Data Access. Add `https://www.googleapis.com/auth/drive.readonly`. Add your team under Test users while the app is in testing.
 4. Create a **Web application** OAuth client. Authorized JavaScript origin, if requested: `https://evolvyn.vercel.app`.
 5. Authorized redirect URI: `https://evolvyn.vercel.app/api/integrations/google_drive/callback`.
-6. In Render, add `OAUTH_GOOGLE_DRIVE_CLIENT_ID` and `OAUTH_GOOGLE_DRIVE_CLIENT_SECRET`. A dedicated client is recommended; Google sign-in alone does not grant Drive access.
+6. You can reuse your existing Google sign-in Web client: add the Drive redirect URI above to that same client, keeping the sign-in redirect. If neither Drive-specific variable is set, Evolvyn uses `OAUTH_GOOGLE_CLIENT_ID` and `OAUTH_GOOGLE_CLIENT_SECRET`. Alternatively, configure both `OAUTH_GOOGLE_DRIVE_CLIENT_ID` and `OAUTH_GOOGLE_DRIVE_CLIENT_SECRET` for a dedicated client. A partial dedicated pair is rejected; credentials are never mixed. Google sign-in alone does not grant Drive access.
 7. Redeploy, then click **Connect Google Drive** in Evolvyn and approve the read-only access.
 
 Tools: `drive_files` lists up to 20 file metadata records; `drive_text` reads Google Docs/plain text/CSV up to 24 KB. Other formats and binary downloads are rejected. Refresh tokens are encrypted and renewed through Google's fixed endpoint when needed. Testing-mode refresh grants can expire after seven days. Drive read-only is a restricted scope; public use may require Google's verification and applicable security assessment. Test with your own team's accounts first.
@@ -88,3 +88,5 @@ python tests/e2e_dashboard_refresh.py
 ```
 
 Results: production build passed; the regression suite passed 95 tests; the final focused connector suite passed 17 tests after adding grant-renewal role coverage. Both browser journeys passed. Provider HTTP/consent responses were controlled; MCP discovery and DB/vault operations were real. The existing Vite chunk-size and Starlette deprecation notices remain nonblocking.
+
+Registry setup correction: shared connector styles load directly on `/mcp-registry`; setup fields use full-width labels and a sticky connection action. Connect checks the running API instead of trusting cached configuration. Missing-configuration messages and Refresh status remain available. Verified with 31 connector/GitHub backend tests, production build and registry-first desktop/mobile consent browser checks using controlled provider responses.

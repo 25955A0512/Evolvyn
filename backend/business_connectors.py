@@ -32,7 +32,11 @@ def settings(provider):
     except ValueError as e:raise HTTPException(503,str(e))
     if session_cookie_name().startswith(('__Host-','__Secure-')) and os.getenv('COOKIE_SECURE')!='1':raise HTTPException(503,'Prefixed session cookies require COOKIE_SECURE=1')
     prefix='OAUTH_'+provider.upper()
-    return {**PROVIDERS[provider],'client_id':os.getenv(prefix+'_CLIENT_ID',''),'client_secret':os.getenv(prefix+'_CLIENT_SECRET',''),'redirect_uri':origin+'/api/integrations/'+provider+'/callback'}
+    # Reusing the Google Web client still requires a separate Drive consent.
+    # Never combine half of a dedicated configuration with shared credentials.
+    if provider=='google_drive' and not any(os.getenv(prefix+suffix,'').strip() for suffix in ('_CLIENT_ID','_CLIENT_SECRET')) and all(os.getenv('OAUTH_GOOGLE'+suffix,'').strip() for suffix in ('_CLIENT_ID','_CLIENT_SECRET')):
+        prefix='OAUTH_GOOGLE'
+    return {**PROVIDERS[provider],'client_id':os.getenv(prefix+'_CLIENT_ID','').strip(),'client_secret':os.getenv(prefix+'_CLIENT_SECRET','').strip(),'credential_prefix':prefix,'redirect_uri':origin+'/api/integrations/'+provider+'/callback'}
 
 def cookie_name(provider):return session_cookie_name()+'_cx_'+provider
 
@@ -199,7 +203,7 @@ class BusinessConnectors:
                         if not s['POLICY'].settings(owner)['allow_external_processing']:state='policy_blocked'
                         row={**row,'state':state}
                     except HTTPException:row={**row,'state':'needs_authorization'}
-                result[provider]={'name':config['name'],'configured':bool(config['client_id'] and config['client_secret']),'connection':({k:v for k,v in row.items() if k not in ('credential_id',)} if row else None),'setup':{'console_url':config['console'],'callback_url':config['redirect_uri'],'variables':['OAUTH_'+provider.upper()+'_CLIENT_ID','OAUTH_'+provider.upper()+'_CLIENT_SECRET'],'scopes':config['scopes']}}
+                result[provider]={'name':config['name'],'configured':bool(config['client_id'] and config['client_secret']),'connection':({k:v for k,v in row.items() if k not in ('credential_id',)} if row else None),'setup':{'console_url':config['console'],'callback_url':config['redirect_uri'],'variables':[config['credential_prefix']+'_CLIENT_ID',config['credential_prefix']+'_CLIENT_SECRET'],'scopes':config['scopes']}}
             return result
         @app.post('/api/integrations/{provider}/authorize')
         def authorize(provider:str,body:ConnectInput,request:Request,owner=Depends(auth)):return self.begin(provider,body,request,owner)
