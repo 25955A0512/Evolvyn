@@ -1,0 +1,60 @@
+# Review plans/region before deploying: these are paid, always-on services.
+# Frontend lives on Vercel. No credentials belong in this file.
+services:
+  - type: pserv
+    name: evolvyn-compiler
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./compiler/Dockerfile
+    dockerContext: .
+    numInstances: 1
+    envVars:
+      - key: PORT
+        value: "8070"
+      - key: EVOLVYN_COMPILER_TOKEN
+        generateValue: true
+
+  - type: web
+    name: evolvyn-api
+    runtime: docker
+    plan: standard
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    numInstances: 1
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PUBLIC_ORIGIN
+        sync: false
+      - key: COOKIE_SECURE
+        value: "1"
+      - key: EVOLVYN_SESSION_COOKIE
+        value: __Host-evolvyn_session
+      - key: EVOLVYN_ACCESS_TOKEN
+        generateValue: true
+      - key: EVOLVYN_VAULT_SEED
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: evolvyn-db
+          property: connectionString
+      - key: PGSSLMODE
+        value: require
+      - key: EVOLVYN_COMPILER_HOSTPORT
+        fromService:
+          type: pserv
+          name: evolvyn-compiler
+          property: hostport
+      - key: EVOLVYN_COMPILER_TOKEN
+        fromService:
+          type: pserv
+          name: evolvyn-compiler
+          envVarKey: EVOLVYN_COMPILER_TOKEN
+
+databases:
+  - name: evolvyn-db
+    databaseName: evolvyn
+    user: evolvyn
+    plan: basic-256mb
+    ipAllowList: []

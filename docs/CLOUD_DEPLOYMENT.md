@@ -1,5 +1,7 @@
 # Cloud deployment recommendation
 
+The current requested deployment is [Vercel + Render](VERCEL_RENDER_DEPLOYMENT.md). Its prepared configuration preserves the existing app; actual dashboard provisioning/public acceptance is still required. The AWS design below remains an alternative managed-production target.
+
 For the initial controlled EC2 + HTTPS load-balancer setup, use [AWS first deployment](AWS_FIRST_DEPLOYMENT.md). It includes the checked Compose overlay, proxy configuration, domain/certificate steps and real OAuth registration. This is separate from the managed production target below.
 
 For the private business-data version, prefer **AWS** if the company has no existing cloud standard. Use the company's approved region; do not infer data residency from a user's location. An Azure-first company should use its existing tenant and equivalent managed services instead.

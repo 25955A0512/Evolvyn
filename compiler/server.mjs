@@ -5,6 +5,8 @@ import path from 'node:path';
 import {createRequire} from 'node:module';
 import * as esbuild from 'esbuild';
 const require=createRequire(import.meta.url),token=process.env.EVOLVYN_COMPILER_TOKEN||'';
+const port=Number(process.env.PORT||8070);
+if(!Number.isInteger(port)||port<1||port>65535)throw Error('Invalid compiler PORT');
 let active=0;
 const allowed=name=>typeof name==='string'&&/^[A-Za-z0-9_./-]+$/.test(name)&&!name.startsWith('/')&&name.split('/').every(part=>part&&part!=='.'&&part!=='..')&&/\.(jsx?|tsx?|css|json)$/.test(name);
 const reply=(res,status,body)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(body));};
@@ -40,4 +42,4 @@ http.createServer(async(req,res)=>{
     reply(res,200,{status:'passed',bytes,sha256:hash.digest('hex'),checks:['React JSX and JSON imports bundled by esbuild '+esbuild.version,'CSS compiled','Source code was not executed; no runtime or business acceptance result is inferred']});
   }catch{reply(res,200,{status:'failed',detail:'Source contract or compilation failed. No application code was executed.'});}
   finally{active--;}
-}).setTimeout(15000).listen(8070,'0.0.0.0');
+}).setTimeout(15000).listen(port,'0.0.0.0');

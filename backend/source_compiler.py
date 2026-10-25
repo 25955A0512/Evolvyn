@@ -4,6 +4,11 @@ import httpx
 
 async def compile_frontend(files):
     url=os.getenv('EVOLVYN_COMPILER_URL','')
+    if not url and os.getenv('EVOLVYN_COMPILER_HOSTPORT'):
+        hostport=os.environ['EVOLVYN_COMPILER_HOSTPORT']
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]*:[0-9]{1,5}',hostport) or not 1<=int(hostport.rsplit(':',1)[1])<=65535:
+            return {'status':'unavailable','detail':'Private compiler address is invalid'}
+        url='http://'+hostport
     if not url:return {'status':'unavailable','detail':'No isolated compiler configured; source/contract validation only'}
     # Operator configuration only; neither a model nor a product supplies destinations.
     # Source-only files under src; dependency scripts and arbitrary paths never run.
