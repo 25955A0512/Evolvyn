@@ -42,7 +42,7 @@ def mock_provider(monkeypatch,case='ok',after_profile=None):
             return httpx.Response(200,json={'access_token':token,'expires_in':5184000})
         assert token not in str(request.url)
         assert request.url.host=='graph.instagram.com' and request.headers['Authorization']=='Bearer '+token
-        assert request.url.params['fields']=='user_id,username'
+        assert request.url.params['fields']=='id,user_id,username'
         if after_profile:after_profile()
         return httpx.Response(200,json={'user_id':'other' if case=='mismatch' else '12345','username':'synthetic_shop'})
     original=httpx.AsyncClient
@@ -213,4 +213,29 @@ def test_safe_stage_diagnostics_without_upstream_secret_reflection(c,monkeypatch
     r=callback(c,begin(c));assert r.status_code==502
     detail=r.json()['detail'];assert stage in detail and 'Meta code 190' in detail and 'subcode 460' in detail
     assert secret not in r.text and secret not in caplog.text and 'synthetic-long-token' not in r.text
+    assert c.get('/api/growth/social',params={'conversation_id':c.conv}).json()==[]
+
+@pytest.mark.parametrize('profile,expected',[({'id':'12345','user_id':'67890','username':'synthetic_shop'},'67890'),({'id':'12345','username':'synthetic_shop'},'12345'),({'id':67890,'user_id':12345,'username':'synthetic_shop'},'12345')])
+def test_oauth_verifies_named_ids_and_binds_canonical_account(c,monkeypatch,profile,expected):
+    original=httpx.AsyncClient
+    async def handler(request):
+        if request.url.host=='api.instagram.com':return httpx.Response(200,json={'data':[{'access_token':'synthetic-short','user_id':12345}]})
+        if request.url.path=='/access_token':return httpx.Response(200,json={'access_token':'synthetic-long','expires_in':5184000})
+        assert request.url.params['fields']=='id,user_id,username'
+        return httpx.Response(200,json=profile)
+    monkeypatch.setattr(instagram_oauth,'httpx',SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(handler),**kw)))
+    r=callback(c,begin(c));assert r.status_code==303,r.text
+    row=c.get('/api/growth/social',params={'conversation_id':c.conv}).json()[0]
+    assert row['account_id']==expected and row['oauth_token_subject']=='12345'
+    assert row['oauth_identity']=={k:str(v) for k,v in profile.items() if k in ('id','user_id')}
+
+@pytest.mark.parametrize('profile,stage',[({'id':'99999','user_id':'88888','username':'synthetic_shop'},'account_identity'),({'id':'not-numeric','user_id':'12345','username':'synthetic_shop'},'account_identifiers'),({'username':'synthetic_shop'},'account_identifiers'),({'id':'12345','username':'bad/name'},'account_profile'),({'id':True,'username':'synthetic_shop'},'account_identifiers')])
+def test_identity_mapping_rejects_unrelated_and_malformed_accounts(c,monkeypatch,profile,stage):
+    original=httpx.AsyncClient
+    async def handler(request):
+        if request.url.host=='api.instagram.com':return httpx.Response(200,json={'access_token':'synthetic-short','user_id':12345})
+        if request.url.path=='/access_token':return httpx.Response(200,json={'access_token':'synthetic-long','expires_in':5184000})
+        return httpx.Response(200,json=profile)
+    monkeypatch.setattr(instagram_oauth,'httpx',SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(handler),**kw)))
+    r=callback(c,begin(c));assert r.status_code==502 and stage in r.json()['detail']
     assert c.get('/api/growth/social',params={'conversation_id':c.conv}).json()==[]

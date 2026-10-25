@@ -4,6 +4,7 @@ from datetime import datetime,timezone
 import httpx
 from mcp.server.fastmcp import FastMCP
 from backend.social_contract import Observation
+from backend.instagram_identity import verify_bound_profile
 server=FastMCP('Evolvyn authorized social observations')
 
 def stamp(value):return str(value).replace('Z','+00:00')
@@ -26,8 +27,9 @@ async def observe(provider,account_id,token):
         if provider in ('instagram','instagram_login'):
             host='https://graph.instagram.com' if provider=='instagram_login' else 'https://graph.facebook.com';version=os.getenv('EVOLVYN_META_API_VERSION','v23.0')
             if not re.fullmatch(r'v\d{2}\.0',version):raise ValueError('Invalid Meta API version')
-            profile=await get(host,f'/{version}/{account_id}',{'fields':'id,username,followers_count'})
-            if str(profile.get('id'))!=account_id:raise ValueError('Authorized account mismatch')
+            profile=await get(host,f'/{version}/{account_id}',{'fields':'id,user_id,username,followers_count' if provider=='instagram_login' else 'id,username,followers_count'})
+            if provider=='instagram_login':verify_bound_profile(profile,account_id)
+            elif str(profile.get('id'))!=account_id:raise ValueError('Authorized account mismatch')
             comment_status='Permitted comment sample collected where available.'
             try:media=await get(host,f'/{version}/{account_id}/media',{'fields':'id,caption,timestamp,like_count,comments_count,permalink,comments.limit(10){id,text,timestamp}','limit':25})
             except httpx.HTTPStatusError as error:

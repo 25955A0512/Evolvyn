@@ -14,6 +14,7 @@ from backend.oauth_config import public_origin,fingerprint
 from backend.identity import session_cookie_name
 from backend.policy import ACTOR,Principal
 from backend.social_growth import Native
+from backend.instagram_identity import identifiers,verify_authorized_profile,verify_bound_profile
 from backend.vault import CredentialInput
 
 
@@ -70,7 +71,9 @@ def provider_failure_detail(error,stage):
         'long_lived_exchange':'Instagram could not exchange the short-lived token for a long-lived token. Verify the Instagram App Secret and app/account eligibility.',
         'long_lived_response':'Instagram returned an invalid long-lived token or expiration.',
         'account_verification':'The authorized Instagram profile could not be read. Check professional-account eligibility and instagram_business_basic access.',
-        'account_identity':'The returned Instagram account did not match the authorized identity or profile contract. No account was connected.',
+        'account_identity':'The returned Instagram account did not match the authorized identity. No account was connected.',
+        'account_identifiers':'Instagram returned missing or malformed account identifiers. No account was connected.',
+        'account_profile':'Instagram returned an invalid username or profile. No account was connected.',
     }
     detail=labels.get(stage,'Instagram authorization could not be verified.')
     diagnostic=[stage]
@@ -141,9 +144,11 @@ class InstagramOAuth:
                     exchanged=await instagram_json(client,'GET','https://graph.instagram.com/access_token',stage,params={'grant_type':'ig_exchange_token','client_secret':settings['client_secret'],'access_token':token})
                     stage='long_lived_response';token,ttl=token_response(exchanged)
                     stage='account_verification'
-                    profile=await instagram_json(client,'GET','https://graph.instagram.com/'+version+'/me',stage,params={'fields':'user_id,username'},headers={'Authorization':'Bearer '+token})
+                    profile=await instagram_json(client,'GET','https://graph.instagram.com/'+version+'/me',stage,params={'fields':'id,user_id,username'},headers={'Authorization':'Bearer '+token})
+                    stage='account_identifiers';identity=identifiers(profile)
                     stage='account_identity'
-                    if str(profile.get('user_id'))!=subject or not isinstance(profile.get('username'),str) or not re.fullmatch(r'[A-Za-z0-9._]{1,30}',profile['username']) or token in json.dumps(profile):raise ValueError('Instagram account verification failed')
+                    if subject not in identity.values():raise ValueError('Instagram authorized subject mismatch')
+                    stage='account_profile';account,identity=verify_authorized_profile(profile,subject,token)
                     expires_at=(issued_at+timedelta(seconds=ttl)).isoformat()
             except Exception as failure:
                 # Safe Render diagnostic: never log exception text or upstream bodies.
@@ -152,7 +157,7 @@ class InstagramOAuth:
                 raise HTTPException(502,provider_failure_detail(failure,stage)) from None
             # Revalidate after the external call; neither logout nor a policy change grants a connection.
             self.validate_session(owner,data);self.authorize_scope(owner,data['conversation_id'])
-            prior=next((r for r in s['listing'](owner,'social_source') if r.get('oauth_provider')=='instagram' and r['conversation']==data['conversation_id'] and r['account_id']==subject),None)
+            prior=next((r for r in s['listing'](owner,'social_source') if r.get('oauth_provider')=='instagram' and r['conversation']==data['conversation_id'] and r['account_id']==account),None)
             prior_credential=None
             if prior:prior_credential=s['get'](owner,prior['managed_server_id'],'mcp_server').get('credential_id')
             credential=s['VAULT'].put(owner,CredentialInput(name='Instagram authorized · '+profile['username'][:65],provider='mcp',value=token),prior_credential)
@@ -167,9 +172,9 @@ class InstagramOAuth:
                 source={**prior,'enabled':True,'oauth_expires_at':expires_at}
                 source['config_binding']=self.growth.binding(owner,source)
             else:
-                source=await self.growth.create_native(owner,Native(conversation_id=data['conversation_id'],profile='instagram_login_social',credential_id=credential_id,account_id=subject,name='Instagram · '+profile['username'][:70]))
+                source=await self.growth.create_native(owner,Native(conversation_id=data['conversation_id'],profile='instagram_login_social',credential_id=credential_id,account_id=account,name='Instagram · '+profile['username'][:70]))
             self.validate_session(owner,data);self.authorize_scope(owner,data['conversation_id'])
-            source.update(oauth_actor=data['actor'],oauth_refresh_after=(stamp()+timedelta(days=1)).isoformat(),oauth_refresh_error=None,oauth_provider='instagram',oauth_expires_at=expires_at,oauth_authorized_at=stamp().isoformat(),oauth_requested_scopes=data['scopes'])
+            source.update(oauth_token_subject=subject,oauth_identity=identity,oauth_actor=data['actor'],oauth_refresh_after=(stamp()+timedelta(days=1)).isoformat(),oauth_refresh_error=None,oauth_provider='instagram',oauth_expires_at=expires_at,oauth_authorized_at=stamp().isoformat(),oauth_requested_scopes=data['scopes'])
             s['save'](owner,'social_source',{k:v for k,v in source.items() if k!='id'},source['id'])
             s['save'](owner,'audit',{'actor':data['actor'],'action':'connector.authorized','provider':'instagram','source_id':source['id'],'at':stamp().isoformat()})
         except BaseException:
@@ -191,8 +196,8 @@ class InstagramOAuth:
             async with asyncio.timeout(25),httpx.AsyncClient(timeout=10,follow_redirects=False) as client:
                 result=await provider_json(client,'GET','https://graph.instagram.com/refresh_access_token',params={'grant_type':'ig_refresh_token','access_token':token})
                 refreshed,ttl=token_response(result)
-                profile=await provider_json(client,'GET','https://graph.instagram.com/'+api_version()+'/me',params={'fields':'user_id'},headers={'Authorization':'Bearer '+refreshed})
-                if str(profile.get('user_id'))!=source['account_id']:raise ValueError('Account changed')
+                profile=await provider_json(client,'GET','https://graph.instagram.com/'+api_version()+'/me',params={'fields':'id,user_id'},headers={'Authorization':'Bearer '+refreshed})
+                verify_bound_profile(profile,source['account_id'],source.get('oauth_identity'))
         except Exception:raise HTTPException(502,'Instagram renewal failed. Check app access or reconnect the account; no renewal was recorded.') from None
         self.authorize_scope(owner,source['conversation'])
         # Expected version + enabled check prevents refresh from resurrecting a revoked credential.

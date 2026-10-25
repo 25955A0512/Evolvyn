@@ -260,3 +260,23 @@ def test_late_observation_cannot_commit_after_revocation_or_cancel(c,monkeypatch
     result=collect(c,s);assert result['state']==('CANCELLED' if change=='cancel' else 'FAILED'),result
     row=c.get('/api/growth/social',params={'conversation_id':conv['id']}).json()[0]
     assert row['latest'] is None and not row['last_success_at']
+
+
+def test_instagram_login_collection_verifies_canonical_id_not_scoped_alias(monkeypatch):
+    original=httpx.AsyncClient
+    def handler(request):
+        if request.url.path.endswith('/12345'):
+            assert 'user_id' in request.url.params['fields']
+            return httpx.Response(200,json={'id':'67890','user_id':'12345','username':'synthetic_shop'})
+        return httpx.Response(200,json={'data':[]})
+    monkeypatch.setattr(social_mcp.httpx,'AsyncClient',lambda **kw:original(transport=httpx.MockTransport(handler),**kw))
+    result=asyncio.run(social_mcp.observe('instagram_login','12345','synthetic-token'))
+    assert result['account_id']=='12345'
+
+
+def test_instagram_identity_mapping_cannot_change_on_refresh():
+    from backend.instagram_identity import verify_bound_profile
+    assert verify_bound_profile({'id':'67890','user_id':'12345'},'12345',{'id':'67890','user_id':'12345'})
+    with pytest.raises(ValueError):verify_bound_profile({'id':'other','user_id':'12345'},'12345',{'id':'67890','user_id':'12345'})
+    with pytest.raises(ValueError):verify_bound_profile({'id':'67891','user_id':'12345'},'12345',{'id':'67890','user_id':'12345'})
+    with pytest.raises(ValueError):verify_bound_profile({'id':'12345','user_id':'67890'},'12345')
