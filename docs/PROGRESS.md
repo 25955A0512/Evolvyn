@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Custom MCP starter: added a deployable Bearer-authenticated Streamable HTTP server with conversion/rate-comparison tools, a minimal hashed dependency lock and Render Web Service instructions. Owners/admins can now explicitly approve public hostnames inside the registry registration form; unsafe URLs/DNS, tenant/role boundaries and existing policy values remain enforced. MCP token references are visible in Key vault. See [create/register a server](CUSTOM_MCP_SERVER.md).
+
 Groq catalog correction: replaced the two-model ID gate with bounded catalog-based chat/JSON capability checks, including model-specific reasoning settings. Model errors preserve the prior default; key dialog Save/Cancel remain visible on error. Build, 52 focused tests and dashboard browser acceptance pass with controlled provider HTTP. See [cloud model defaults](CLOUD_MODEL_DEFAULTS.md).
 
 Cloud model defaults: Gemini/Groq key saving now validates supported text/JSON models and automatically sets one shared route for all agents. Removed manual model selection, per-agent override controls and other model choices from current chat/workflow settings. Fixed Groq key inference, shared provider request handling and main-chat routing; missing keys fail clearly. See [current key workflow](CLOUD_MODEL_DEFAULTS.md).

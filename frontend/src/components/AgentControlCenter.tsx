@@ -440,6 +440,11 @@ export function AgentControlCenter({
                       const form = e.currentTarget;
                       const d = Object.fromEntries(new FormData(form));
                       action(async () => {
+                        if (transport === "streamable_http" && d.approve_host)
+                          await api.json("/mcp/hosts/approve", {
+                            method: "POST",
+                            body: JSON.stringify({ url: d.url }),
+                          });
                         await api.json("/mcp/servers", {
                           method: "POST",
                           body: JSON.stringify({
@@ -474,6 +479,7 @@ export function AgentControlCenter({
                     <label>
                       Transport
                       <select
+                        aria-label="Transport"
                         value={transport}
                         onChange={(e) => setTransport(e.target.value)}
                       >
@@ -506,10 +512,13 @@ export function AgentControlCenter({
                             placeholder="https://approved.example/mcp"
                           />
                         </label>
+                        <label className="control-checkbox">
+                          <input type="checkbox" name="approve_host" />
+                          <span>Approve this hostname for my workspace</span>
+                        </label>
                         <small>
-                          Add the endpoint hostname to Governance first. Private
-                          network destinations and embedded credentials are
-                          rejected.
+                          Owners/admins can approve public HTTPS hosts. Private
+                          network destinations are blocked.
                         </small>
                         <label>
                           Vault credential ID
@@ -531,7 +540,7 @@ export function AgentControlCenter({
                         </small>
                         <label>
                           Maximum tool risk
-                          <select name="risk">
+                          <select name="risk" aria-label="Maximum tool risk">
                             <option value="external_write">
                               External write · approval required
                             </option>

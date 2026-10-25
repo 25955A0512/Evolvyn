@@ -152,6 +152,11 @@ export function KeyVaultPanel({ api }: { api: ReturnType<typeof client> }) {
                     <span>Encrypted key</span>
                     <small>v{c.version}</small>
                   </div>
+                  {c.provider === "mcp" && (
+                    <small style={{ overflowWrap: "anywhere" }}>
+                      Credential reference: <code>{c.id}</code>
+                    </small>
+                  )}
                   {c.verified_model && (
                     <small>Model checked: {c.verified_model}</small>
                   )}

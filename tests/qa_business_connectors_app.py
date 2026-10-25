@@ -18,3 +18,17 @@ async def handler(request):
     raise AssertionError('Unexpected provider endpoint')
 stub=SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(handler),**kw))
 bc.httpx=stub;bm.httpx=stub
+
+# UI registration uses a controlled public DNS result. Never contact this fake
+# endpoint: discovery remains explicitly unavailable in this browser fixture.
+import socket
+original_dns=socket.getaddrinfo
+socket.getaddrinfo=lambda host,port,**kwargs: [(socket.AF_INET,socket.SOCK_STREAM,6,'',('8.8.8.8',port))] if host=='starter-mcp.example' else original_dns(host,port,**kwargs)
+from backend import app as module
+original_probe=module.MCP_REGISTRY.probe
+async def probe(owner,id):
+    row=module.MCP_REGISTRY.server(owner,id)
+    if row.get('url')=='https://starter-mcp.example/mcp':
+        return module.save(owner,'mcp_server',{k:v for k,v in row.items() if k!='id'}|{'status':'unavailable','tools':[],'last_error':'Controlled browser fixture has no deployed remote endpoint.'},id)
+    return await original_probe(owner,id)
+module.MCP_REGISTRY.probe=probe

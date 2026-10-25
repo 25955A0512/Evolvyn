@@ -35,11 +35,15 @@ class ServerInput(BaseModel):
     risk:Literal['read','internal_write','external_write','critical']='read'
     timeout_seconds:int=Field(default=15,ge=2,le=30)
 
+class HostApproval(BaseModel):
+    model_config=ConfigDict(extra='forbid')
+    url:str=Field(min_length=1,max_length=1000)
+
 async def public_addresses(url,hosts):
     parsed=urlparse(url)
     if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password or parsed.fragment or parsed.query:raise ValueError('Use an HTTPS URL without embedded credentials or fragments')
     if parsed.port not in (None,443):raise ValueError('Only standard HTTPS port 443 is permitted')
-    if parsed.hostname not in hosts:raise ValueError('Host must be explicitly allowed by organization governance')
+    if parsed.hostname not in hosts:raise ValueError('Approve this hostname in the MCP registration form first')
     results=await asyncio.to_thread(socket.getaddrinfo,parsed.hostname,443,type=socket.SOCK_STREAM)
     ips={r[4][0] for r in results}
     if not ips or any(not ipaddress.ip_address(ip).is_global for ip in ips):raise ValueError('Private, loopback and reserved destinations are forbidden')
@@ -166,6 +170,33 @@ class MCPRegistry:
 def install(app,auth,service):
     @app.get('/api/mcp/credential-prefix')
     def prefix(owner=Depends(auth)):return {'prefix':credential_prefix(owner)}
+    @app.post('/api/mcp/hosts/approve')
+    async def approve_host(body:HostApproval,owner=Depends(auth)):
+        service.policy.require(owner,'manage_registry');principal=service.policy.require(owner,'manage_policy')
+        if not service.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+        try:
+            host=urlparse(body.url).hostname
+            async with asyncio.timeout(5):await public_addresses(body.url,[host] if host else [])
+        except (ValueError,OSError,TimeoutError):raise HTTPException(422,'Use a public HTTPS MCP endpoint on port 443 without credentials, query strings or fragments') from None
+        from backend.policy import DEFAULTS
+        with service.policy.conn() as c:
+            c.execute('SELECT pg_advisory_xact_lock(hashtext(%s))',('mcp-hosts:'+owner,))
+            if principal.account:
+                member=c.execute('SELECT role FROM memberships WHERE organization_id=%s AND account_id=%s',(owner,principal.account)).fetchone()
+                if not member or member['role'] not in ('owner','admin'):raise HTTPException(403,'Administrator permission was revoked')
+            row=c.execute("SELECT id,body FROM records WHERE owner=%s AND kind='policy' LIMIT 1 FOR UPDATE",(owner,)).fetchone()
+            policy={key:(row['body'].get(key,value) if row else value) for key,value in DEFAULTS.items()}
+            if not policy['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+            hosts=policy['allowed_mcp_hosts']
+            if host not in hosts:
+                if len(hosts)>=30:raise HTTPException(422,'Maximum 30 approved MCP hosts')
+                policy['allowed_mcp_hosts']=[*hosts,host]
+            policy['updated_at']=datetime.now(timezone.utc).isoformat()
+            id=row['id'] if row else 'policy-'+owner
+            c.execute("INSERT INTO records(id,owner,kind,body) VALUES(%s,%s,'policy',%s) ON CONFLICT(id) DO UPDATE SET body=EXCLUDED.body WHERE records.owner=EXCLUDED.owner",(id,owner,json.dumps(policy)))
+        service.save(owner,'audit',{'action':'mcp.host.approved','host':host,'actor':principal.account,'at':policy['updated_at']})
+        return {'approved':True,'hostname':host}
+
     @app.get('/api/mcp/profiles')
     def profiles(owner=Depends(auth)):return [{'id':key,'module':value} for key,value in PROFILES.items()]
     @app.get('/api/mcp/servers')
