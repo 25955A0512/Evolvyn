@@ -51,10 +51,65 @@ export function ConnectionsDashboard({
       setBusy(false);
     }
   }
-  const visible = servers.filter((s) =>
-    (s.name + " " + s.profile + " " + (s.url || ""))
-      .toLowerCase()
-      .includes(query.toLowerCase()),
+  const visible = [...servers]
+    .sort(
+      (a, b) =>
+        Number(b.enabled && b.status === "healthy") -
+        Number(a.enabled && a.status === "healthy"),
+    )
+    .filter((s) =>
+      (s.name + " " + s.profile + " " + (s.url || ""))
+        .toLowerCase()
+        .includes(query.toLowerCase()),
+    );
+  const serverCard = (s: any) => (
+    <article className="dashboard-connector-card" key={s.id}>
+      <div className="dashboard-card-head">
+        <ConnectorArt name={s.name + " " + s.profile} />
+        <span
+          className={
+            "dashboard-status " +
+            (!s.enabled || s.status !== "healthy" ? "muted" : "")
+          }
+        >
+          {!s.enabled
+            ? "Disabled"
+            : s.status === "healthy"
+              ? "MCP ready"
+              : s.status === "unavailable"
+                ? "Needs attention"
+                : "Not checked"}
+        </span>
+      </div>
+      <h3>{s.name}</h3>
+      <p>{s.transport === "stdio" ? s.profile : s.url}</p>
+      <div className="dashboard-card-meta">
+        <span>{s.tools?.length || 0} tools</span>
+        <span>
+          {s.last_checked_at
+            ? new Date(s.last_checked_at).toLocaleString()
+            : "No check yet"}
+        </span>
+      </div>
+      {s.last_error && <p className="error">{s.last_error}</p>}
+      <footer>
+        <button
+          disabled={busy || !s.enabled}
+          onClick={() =>
+            act(async () => {
+              await api.json("/mcp/servers/" + s.id + "/probe", {
+                method: "POST",
+              });
+              setNotice("MCP check complete");
+            })
+          }
+        >
+          <RefreshCw size={15} />
+          Check
+        </button>
+        <button onClick={() => onManage("servers", s.name)}>Manage</button>
+      </footer>
+    </article>
   );
   return (
     <div className="studio-page dashboard-page connections-dashboard">
@@ -131,67 +186,11 @@ export function ConnectionsDashboard({
       </div>
       {tab === "connected" && (
         <>
-          <AuthorizedConnections api={api} />
-          <a className="dashboard-social-link" href="/growth?social=connect">
-            <ConnectorArt name="Instagram" />
-            <span>
-              <strong>Instagram</strong>
-              <small>Professional account analytics</small>
-            </span>
-            <span>Connect →</span>
-          </a>
+          <h2 className="registry-section-title">MCP servers</h2>
           <div className="dashboard-connector-grid">
-            {visible.map((s) => (
-              <article className="dashboard-connector-card" key={s.id}>
-                <div className="dashboard-card-head">
-                  <ConnectorArt name={s.name + " " + s.profile} />
-                  <span
-                    className={
-                      "dashboard-status " +
-                      (!s.enabled || s.status !== "healthy" ? "muted" : "")
-                    }
-                  >
-                    {!s.enabled
-                      ? "Disabled"
-                      : s.status === "healthy"
-                        ? "MCP ready"
-                        : s.status === "unavailable"
-                          ? "Needs attention"
-                          : "Not checked"}
-                  </span>
-                </div>
-                <h3>{s.name}</h3>
-                <p>{s.transport === "stdio" ? s.profile : s.url}</p>
-                <div className="dashboard-card-meta">
-                  <span>{s.tools?.length || 0} tools</span>
-                  <span>
-                    {s.last_checked_at
-                      ? new Date(s.last_checked_at).toLocaleString()
-                      : "No check yet"}
-                  </span>
-                </div>
-                {s.last_error && <p className="error">{s.last_error}</p>}
-                <footer>
-                  <button
-                    disabled={busy || !s.enabled}
-                    onClick={() =>
-                      act(async () => {
-                        await api.json("/mcp/servers/" + s.id + "/probe", {
-                          method: "POST",
-                        });
-                        setNotice("MCP check complete");
-                      })
-                    }
-                  >
-                    <RefreshCw size={15} />
-                    Check
-                  </button>
-                  <button onClick={() => onManage("servers", s.name)}>
-                    Manage
-                  </button>
-                </footer>
-              </article>
-            ))}
+            {visible
+              .filter((s) => s.enabled && s.status === "healthy")
+              .map(serverCard)}
             {!servers.length && (
               <button
                 className="dashboard-empty-card"
@@ -203,6 +202,36 @@ export function ConnectionsDashboard({
               </button>
             )}
           </div>
+          <AuthorizedConnections
+            api={api}
+            query={query}
+            onChange={() => load().catch((e) => setError(e.message))}
+          />
+          <a className="dashboard-social-link" href="/growth?social=connect">
+            <ConnectorArt name="Instagram" />
+            <span>
+              <strong>Instagram</strong>
+              <small>Professional account analytics</small>
+            </span>
+            <span>Connect →</span>
+          </a>
+          {visible.some((s) => !s.enabled || s.status !== "healthy") && (
+            <details className="registry-other">
+              <summary>
+                Needs setup or attention (
+                {
+                  visible.filter((s) => !s.enabled || s.status !== "healthy")
+                    .length
+                }
+                )
+              </summary>
+              <div className="dashboard-connector-grid">
+                {visible
+                  .filter((s) => !s.enabled || s.status !== "healthy")
+                  .map(serverCard)}
+              </div>
+            </details>
+          )}
           <p className="dashboard-footnote">
             MCP readiness confirms discovery. Account access is verified when a
             tool reads provider data.
@@ -216,7 +245,9 @@ export function ConnectionsDashboard({
           onConfigure={(name) =>
             name.toLowerCase().includes("instagram")
               ? location.assign("/growth?social=connect")
-              : onManage("servers", name)
+              : ["GitHub", "Google Drive", "Slack", "Shopify"].includes(name)
+                ? setTab("connected")
+                : onManage("servers", name)
           }
           onBundled={(name, profile) =>
             act(async () => {
@@ -250,7 +281,11 @@ export function ConnectionsDashboard({
                 </tr>
               </thead>
               <tbody>
-                {tools
+                {[...tools]
+                  .sort(
+                    (a, b) =>
+                      Number(b.enabled !== false) - Number(a.enabled !== false),
+                  )
                   .filter((t) =>
                     (t.name + " " + t.description)
                       .toLowerCase()

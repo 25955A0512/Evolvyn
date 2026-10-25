@@ -895,3 +895,35 @@
   font-size: 13px;
   color: #7a8978;
 }
+.oauth-account-section {
+  margin: 24px 0;
+}
+.oauth-account-section > .dashboard-card-head {
+  margin-bottom: 16px;
+}
+.oauth-account-section h2,
+.registry-section-title {
+  font-size: 18px;
+  margin: 16px 0;
+}
+.connector-setup-steps {
+  padding-left: 22px;
+  line-height: 1.6;
+  font-size: 14px;
+}
+.connector-setup-steps li {
+  margin-bottom: 10px;
+}
+.workspace-dialog label > input[readonly],
+.workspace-dialog label > textarea[readonly] {
+  background: #f5f7f6;
+  font-size: 12px;
+}
+.registry-other {
+  margin: 24px 0;
+}
+.registry-other summary {
+  cursor: pointer;
+  color: #65766c;
+  padding: 12px 0;
+}

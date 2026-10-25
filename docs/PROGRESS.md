@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Account connectors: added Google Drive, Slack and Shopify read-only OAuth into the existing vault/MCP registry, retaining GitHub OAuth. Healthy servers are promoted and setup/failed servers collapsed. Drive grants renew; Slack/Shopify expiry requires reconnect. Provider application registration and live approval/acceptance remain operator steps. See [account connector setup](ACCOUNT_CONNECTOR_OAUTH.md).
+
 Dashboard refresh: compact key vault dialogs and route controls, connected/discover/tools views, focused discussion composer, configurable Growth Insights widgets with real product chart/table, and schedule summaries are implemented. Browser acceptance covers the existing growth approval flow and mobile layouts with controlled provider boundaries. See [dashboard scope and checks](DASHBOARD_REFRESH.md).
 
 Product chat recovery: Enter-to-send/Shift+Enter, IME/dedup guards, immediate pending feedback and draft recovery are implemented; redundant catalog requests were removed. Key vault can discover provider-listed Gemini models, explicitly apply a chosen model to all agents, and show resolved routes. See [chat/model recovery](CHAT_AND_GEMINI_RECOVERY.md).

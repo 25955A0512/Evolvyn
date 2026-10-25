@@ -1030,3 +1030,7 @@ SOCIAL_GROWTH.install(app,auth)
 from backend.instagram_oauth import InstagramOAuth
 INSTAGRAM_OAUTH=InstagramOAuth({name:globals()[name] for name in ('get','save','listing','conn','POLICY','VAULT','MCP_REGISTRY')},SOCIAL_GROWTH)
 INSTAGRAM_OAUTH.install(app,auth)
+
+from backend.business_connectors import BusinessConnectors
+BUSINESS_CONNECTORS=BusinessConnectors({name:globals()[name] for name in ('get','save','listing','conn','POLICY','VAULT','MCP_REGISTRY')})
+BUSINESS_CONNECTORS.install(app,auth)

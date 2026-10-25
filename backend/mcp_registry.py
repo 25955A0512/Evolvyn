@@ -21,13 +21,13 @@ from typing import Literal
 
 def credential_prefix(owner):return 'EVOLVYN_MCP_'+hashlib.sha256(owner.encode()).hexdigest()[:12].upper()+'_'
 
-PROFILES={'business_strategy':'backend.mcp_server','evidence_utilities':'backend.mcp_utilities','github':'backend.github_mcp','instagram_social':'backend.social_mcp','instagram_login_social':'backend.social_mcp','youtube_social':'backend.social_mcp'}
-def is_external(server):return server['transport']=='streamable_http' or server.get('profile') in ('github','instagram_social','instagram_login_social','youtube_social')
+PROFILES={'business_strategy':'backend.mcp_server','evidence_utilities':'backend.mcp_utilities','github':'backend.github_mcp','google_drive':'backend.business_mcp','slack':'backend.business_mcp','shopify':'backend.business_mcp','instagram_social':'backend.social_mcp','instagram_login_social':'backend.social_mcp','youtube_social':'backend.social_mcp'}
+def is_external(server):return server['transport']=='streamable_http' or server.get('profile') in ('github','google_drive','slack','shopify','instagram_social','instagram_login_social','youtube_social')
 class ServerInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     name:str=Field(min_length=1,max_length=100)
     transport:Literal['stdio','streamable_http']='stdio'
-    profile:Literal['business_strategy','evidence_utilities','github','instagram_social','instagram_login_social','youtube_social']|None='business_strategy'
+    profile:Literal['business_strategy','evidence_utilities','github','google_drive','slack','shopify','instagram_social','instagram_login_social','youtube_social']|None='business_strategy'
     url:str|None=Field(default=None,max_length=1000)
     auth_env:str|None=Field(default=None,pattern=r'^EVOLVYN_MCP_[A-Z0-9_]+$',max_length=100)
     credential_id:str|None=Field(default=None,max_length=100)
@@ -90,6 +90,13 @@ class MCPRegistry:
         async with asyncio.timeout(row['timeout_seconds']):
             if row['transport']=='stdio':
                 env={'PATH':os.defpath,'PYTHONPATH':str(Path(__file__).resolve().parents[1])}
+                if row.get('profile') in ('google_drive','slack','shopify'):
+                    if not self.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+                    if not row.get('credential_id') or not getattr(self,'business_connectors',None):raise HTTPException(409,'Authorize this provider first')
+                    env['EVOLVYN_BUSINESS_TOKEN']=await self.business_connectors.access_token(owner,row)
+                    env['EVOLVYN_BUSINESS_PROVIDER']=row['profile']
+                    if row.get('shop'):env['EVOLVYN_SHOPIFY_SHOP']=row['shop']
+                    env.update({key:os.environ[key] for key in ('HTTP_PROXY','HTTPS_PROXY','NO_PROXY','SSL_CERT_FILE','EVOLVYN_SHOPIFY_API_VERSION') if os.getenv(key)})
                 if row.get('profile')=='github':
                     if not self.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'Organization policy forbids GitHub processing')
                     if not row.get('credential_id'):raise HTTPException(409,'Authorize GitHub first')
@@ -167,6 +174,7 @@ def install(app,auth,service):
         service.policy.require(owner,'manage_registry')
         if body.auth_env and not body.auth_env.startswith(credential_prefix(owner)):raise HTTPException(422,'Credential reference must use this organization’s MCP namespace')
         if body.transport=='stdio':
+            if body.profile in ('google_drive','slack','shopify'):raise HTTPException(422,'Use provider OAuth to configure this managed account')
             if not body.profile or body.url or body.auth_env or body.credential_id:raise HTTPException(422,'Built-in stdio profiles do not accept commands, URLs or credentials')
             if body.risk!='read':raise HTTPException(422,'Built-in evidence tools are read-only')
         else:
@@ -185,7 +193,8 @@ def install(app,auth,service):
         return service.save(owner,'mcp_server',{**body.model_dump(),'status':'unchecked','tools':[],'last_checked_at':None,'updated_at':datetime.now(timezone.utc).isoformat()})
     @app.put('/api/mcp/servers/{id}')
     async def update(id:str,body:ServerInput,owner=Depends(auth)):
-        await validate(owner,body);service.get(owner,id,'mcp_server')
+        await validate(owner,body);existing=service.get(owner,id,'mcp_server')
+        if existing.get('profile') in ('google_drive','slack','shopify'):raise HTTPException(409,'Manage this account from Connections')
         return service.save(owner,'mcp_server',{**body.model_dump(),'status':'unchecked','tools':[],'last_checked_at':None,'updated_at':datetime.now(timezone.utc).isoformat()},id)
     @app.post('/api/mcp/servers/{id}/probe')
     async def probe(id:str,owner=Depends(auth)):

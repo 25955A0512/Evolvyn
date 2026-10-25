@@ -302,7 +302,10 @@ export function AgentControlCenter({
                     verify connectivity before use.
                   </p>
                 </div>
-                <AuthorizedConnections api={api} />
+                <AuthorizedConnections
+                  api={api}
+                  onChange={() => load().catch(fail)}
+                />
                 <ConnectorGallery
                   busy={busy}
                   servers={servers}
@@ -376,112 +379,132 @@ export function AgentControlCenter({
                         results persist in your organization.
                       </div>
                     )}
-                    {servers.map((s) => (
-                      <article
-                        className="control-card server-card"
-                        id={"mcp-" + s.id}
-                        key={s.id}
-                      >
-                        <div className="control-card-heading">
-                          <span className="server-icon">
-                            <ConnectorArt name={s.name + " " + s.profile} />
-                          </span>
-                          <div>
-                            <strong>{s.name}</strong>
-                            <small>
-                              {s.transport === "stdio" ? s.profile : s.url}
-                            </small>
+                    {[...servers]
+                      .sort(
+                        (a, b) =>
+                          Number(b.enabled && b.status === "healthy") -
+                          Number(a.enabled && a.status === "healthy"),
+                      )
+                      .map((s) => (
+                        <article
+                          className="control-card server-card"
+                          id={"mcp-" + s.id}
+                          key={s.id}
+                        >
+                          <div className="control-card-heading">
+                            <span className="server-icon">
+                              <ConnectorArt name={s.name + " " + s.profile} />
+                            </span>
+                            <div>
+                              <strong>{s.name}</strong>
+                              <small>
+                                {s.transport === "stdio" ? s.profile : s.url}
+                              </small>
+                            </div>
+                            <span
+                              className={
+                                "status-pill " +
+                                (s.status === "healthy" ? "healthy" : "")
+                              }
+                            >
+                              {!s.enabled ? "Disabled" : s.status}
+                            </span>
                           </div>
-                          <span
-                            className={
-                              "status-pill " +
-                              (s.status === "healthy" ? "healthy" : "")
-                            }
-                          >
-                            {!s.enabled ? "Disabled" : s.status}
-                          </span>
-                        </div>
-                        <div className="tool-chips">
-                          {s.tools?.map((t: any) => (
-                            <span key={t.name}>{t.name}</span>
-                          ))}
-                        </div>
-                        <small>
-                          {s.last_checked_at
-                            ? "Checked " +
-                              new Date(s.last_checked_at).toLocaleString(
-                                undefined,
-                                { timeZone: "Asia/Calcutta" },
-                              )
-                            : "Not checked yet"}{" "}
-                          · Risk: {s.risk}
-                        </small>
-                        {s.last_error && (
-                          <p className="control-error">{s.last_error}</p>
-                        )}
-                        <div className="control-card-actions">
-                          <button
-                            disabled={busy || !s.enabled}
-                            onClick={() =>
-                              action(
-                                () =>
-                                  api.json("/mcp/servers/" + s.id + "/probe", {
-                                    method: "POST",
-                                  }),
-                                "Server health and discovery refreshed",
-                              )
-                            }
-                          >
-                            <RefreshCw size={13} />
-                            Check health
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() =>
-                              action(
-                                () =>
-                                  api.json("/mcp/servers/" + s.id, {
-                                    method: "PUT",
-                                    body: JSON.stringify(
-                                      Object.fromEntries(
-                                        [
-                                          "name",
-                                          "transport",
-                                          "profile",
-                                          "url",
-                                          "auth_env",
-                                          "credential_id",
-                                          "risk",
-                                          "timeout_seconds",
-                                        ]
-                                          .map((k) => [k, s[k]])
-                                          .concat([["enabled", !s.enabled]]),
-                                      ),
+                          <div className="tool-chips">
+                            {s.tools?.map((t: any) => (
+                              <span key={t.name}>{t.name}</span>
+                            ))}
+                          </div>
+                          <small>
+                            {s.last_checked_at
+                              ? "Checked " +
+                                new Date(s.last_checked_at).toLocaleString(
+                                  undefined,
+                                  { timeZone: "Asia/Calcutta" },
+                                )
+                              : "Not checked yet"}{" "}
+                            · Risk: {s.risk}
+                          </small>
+                          {s.last_error && (
+                            <p className="control-error">{s.last_error}</p>
+                          )}
+                          <div className="control-card-actions">
+                            <button
+                              disabled={busy || !s.enabled}
+                              onClick={() =>
+                                action(
+                                  () =>
+                                    api.json(
+                                      "/mcp/servers/" + s.id + "/probe",
+                                      {
+                                        method: "POST",
+                                      },
                                     ),
-                                  }),
-                                "Server availability updated",
-                              )
-                            }
-                          >
-                            {s.enabled ? "Disable" : "Enable"}
-                          </button>
-                          <button
-                            disabled={busy}
-                            onClick={() =>
-                              action(
-                                () =>
-                                  api.json("/mcp/servers/" + s.id, {
-                                    method: "DELETE",
-                                  }),
-                                "Server removed",
-                              )
-                            }
-                          >
-                            Remove
-                          </button>
-                        </div>
-                      </article>
-                    ))}
+                                  "Server health and discovery refreshed",
+                                )
+                              }
+                            >
+                              <RefreshCw size={13} />
+                              Check health
+                            </button>
+                            {[
+                              "google_drive",
+                              "slack",
+                              "shopify",
+                              "github",
+                            ].includes(s.profile) ? (
+                              <a href="/integrations">Manage account</a>
+                            ) : (
+                              <button
+                                disabled={busy}
+                                onClick={() =>
+                                  action(
+                                    () =>
+                                      api.json("/mcp/servers/" + s.id, {
+                                        method: "PUT",
+                                        body: JSON.stringify(
+                                          Object.fromEntries(
+                                            [
+                                              "name",
+                                              "transport",
+                                              "profile",
+                                              "url",
+                                              "auth_env",
+                                              "credential_id",
+                                              "risk",
+                                              "timeout_seconds",
+                                            ]
+                                              .map((k) => [k, s[k]])
+                                              .concat([
+                                                ["enabled", !s.enabled],
+                                              ]),
+                                          ),
+                                        ),
+                                      }),
+                                    "Server availability updated",
+                                  )
+                                }
+                              >
+                                {s.enabled ? "Disable" : "Enable"}
+                              </button>
+                            )}
+                            <button
+                              disabled={busy}
+                              onClick={() =>
+                                action(
+                                  () =>
+                                    api.json("/mcp/servers/" + s.id, {
+                                      method: "DELETE",
+                                    }),
+                                  "Server removed",
+                                )
+                              }
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </article>
+                      ))}
                   </div>
                   <form
                     ref={serverForm}

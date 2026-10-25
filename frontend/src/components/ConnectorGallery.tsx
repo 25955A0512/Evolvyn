@@ -104,36 +104,6 @@ const RECIPES = [
       "Validate funnel data and compare observed rates with real typed tools.",
   },
   {
-    name: "Shopify",
-    category: "Business",
-    description:
-      "Connect your authorized merchant MCP endpoint for catalog, sales or store tools.",
-  },
-  {
-    name: "GitHub",
-    category: "Development",
-    description:
-      "Bring repository capabilities through your own authorized MCP server.",
-  },
-  {
-    name: "Slack",
-    category: "Productivity",
-    description:
-      "Use a configured MCP endpoint to access permitted team context.",
-  },
-  {
-    name: "Google Drive",
-    category: "Productivity",
-    description:
-      "Add an authorized MCP server for document and file capabilities.",
-  },
-  {
-    name: "Notion",
-    category: "Productivity",
-    description:
-      "Discover workspace tools exposed by your configured MCP server.",
-  },
-  {
     name: "Custom MCP",
     category: "Development",
     description:
@@ -181,45 +151,53 @@ export function ConnectorGallery({
         ))}
       </div>
       <div className="connector-market-grid">
-        {RECIPES.filter(
-          (r) =>
-            (category === "All" || r.category === category) &&
-            (r.name + " " + r.description)
-              .toLowerCase()
-              .includes(query.toLowerCase()),
-        ).map((r) => {
-          const server = r.profile
-            ? servers.find((s) => s.profile === r.profile)
-            : null;
-          return (
-            <article className="connector-market-card" key={r.name}>
-              <ConnectorArt name={r.name} />
-              <div>
-                <h4>{r.name}</h4>
-                <p>{r.description}</p>
-                <small>
-                  {r.profile
-                    ? server
-                      ? `MCP ${server.status} · ${server.tools?.length || 0} discovered tools`
-                      : "Local MCP · no key"
-                    : "Setup required"}
-                </small>
-              </div>
-              <button
-                aria-label={"Configure " + r.name}
-                disabled={busy}
-                onClick={() =>
-                  r.profile ? onBundled(r.name, r.profile) : onConfigure(r.name)
-                }
-              >
-                {server ? <ArrowUpRight size={19} /> : <Plus size={20} />}
-              </button>
-            </article>
-          );
-        })}
+        {[...RECIPES]
+          .sort(
+            (a, b) => Number(Boolean(b.profile)) - Number(Boolean(a.profile)),
+          )
+          .filter(
+            (r) =>
+              (category === "All" || r.category === category) &&
+              (r.name + " " + r.description)
+                .toLowerCase()
+                .includes(query.toLowerCase()),
+          )
+          .map((r) => {
+            const server = r.profile
+              ? servers.find((s) => s.profile === r.profile)
+              : null;
+            return (
+              <article className="connector-market-card" key={r.name}>
+                <ConnectorArt name={r.name} />
+                <div>
+                  <h4>{r.name}</h4>
+                  <p>{r.description}</p>
+                  <small>
+                    {r.profile
+                      ? server
+                        ? `MCP ${server.status} · ${server.tools?.length || 0} discovered tools`
+                        : "Local MCP · no key"
+                      : "Setup required"}
+                  </small>
+                </div>
+                <button
+                  aria-label={"Configure " + r.name}
+                  disabled={busy}
+                  onClick={() =>
+                    r.profile
+                      ? onBundled(r.name, r.profile)
+                      : onConfigure(r.name)
+                  }
+                >
+                  {server ? <ArrowUpRight size={19} /> : <Plus size={20} />}
+                </button>
+              </article>
+            );
+          })}
       </div>
       <p className="connector-gallery-note">
-        Connections are verified through successful checks.
+        GitHub, Google Drive, Slack and Shopify use OAuth in Account
+        connections. Connections are verified through successful checks.
       </p>
     </section>
   );
