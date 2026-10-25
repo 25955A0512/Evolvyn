@@ -17,7 +17,7 @@ import psycopg
 from psycopg.rows import dict_row
 from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Header, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from backend.retrieval import retrieve
 from backend.providers import response_chunks, ProviderNotConfigured
 from backend.file_parser import extract, SUPPORTED
@@ -367,10 +367,33 @@ def tools(owner=Depends(auth)):
     return TOOL_PLUGINS.catalog(owner)
 
 class Business(BaseModel):
+    model_config={'extra':'forbid'}
     name: str = Field(min_length=1,max_length=100)
     product: str = Field(default='',max_length=1000)
     goal: str = Field(default='Improve paid conversion',min_length=1,max_length=1000)
     kind: Literal['general','ecommerce']='general'
+    business_model: str = Field(default='',max_length=500)
+    timezone: str = Field(default='UTC',max_length=80)
+    reporting_currency: str = Field(default='',pattern=r'^(?:[A-Z]{3})?$')
+    website: str = Field(default='',max_length=2000)
+    reporting_objectives: str = Field(default='',max_length=1000)
+
+    @field_validator('timezone')
+    @classmethod
+    def valid_timezone(cls,value):
+        from zoneinfo import ZoneInfo,ZoneInfoNotFoundError
+        try:ZoneInfo(value)
+        except (ZoneInfoNotFoundError,ValueError):raise ValueError('Use an IANA timezone')
+        return value
+
+    @field_validator('website')
+    @classmethod
+    def valid_website(cls,value):
+        from urllib.parse import urlsplit
+        if value:
+            parsed=urlsplit(value)
+            if parsed.scheme!='https' or not parsed.hostname or parsed.username or parsed.password:raise ValueError('Use an HTTPS website without credentials')
+        return value
 
 @app.get('/api/businesses')
 def businesses(owner=Depends(auth)):
@@ -378,7 +401,16 @@ def businesses(owner=Depends(auth)):
 
 @app.post('/api/businesses')
 def create_business(body:Business,owner=Depends(auth)):
+    from backend.agent_memory import reject_secrets
+    reject_secrets(body.model_dump_json())
     return save(owner,'business',body.model_dump())
+
+@app.put('/api/businesses/{id}')
+def update_business(id:str,body:Business,owner=Depends(auth)):
+    get(owner,id,'business')
+    from backend.agent_memory import reject_secrets
+    reject_secrets(body.model_dump_json())
+    return save(owner,'business',body.model_dump(),id)
 
 @app.get('/api/conversations/{id}/retrieve')
 def search_documents(id:str,q:str='',owner=Depends(auth)):
@@ -918,7 +950,7 @@ install_canvas(app,auth,get,save,listing,POLICY)
 from backend.runtime_catalog import install as install_runtime_catalog
 install_runtime_catalog(app,auth,TOOL_PLUGINS,POLICY)
 from backend.growth import install as install_growth
-install_growth(app,auth,{name:globals()[name] for name in ('get','save','listing','POLICY','TOOL_PLUGINS')},MEMORY)
+install_growth(app,auth,{name:globals()[name] for name in ('get','save','listing','conn','scoped_documents','POLICY','TOOL_PLUGINS')},MEMORY)
 from backend.oauth import install as install_oauth
 install_oauth(app,conn,auth)
 

@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Growth workspace update: redesigned Overview/Evidence/Action plan/Monitoring around the existing evidence-to-approved-task-to-measurement loop. Business profiles, source provenance, draft campaigns and restored run/history state persist through the existing APIs/records. Full backend suite: 215 passed; expanded growth suite: 18 passed. Production build and real API/PG desktop/mobile growth journey passed using synthetic uploads and explicit evidence mode. Live native account sync, social publishing and forecasts remain incomplete. See [growth acceptance scope](GROWTH_INSIGHTS_SPEC.md).
+
 Latest interaction update: **145 automated tests pass**. Both supplied smaller recordings were reviewed. The existing agent catalog now supports searched capability selection and real bounded execution; account preferences persist with account isolation; searched recent conversations/evidence, native settings dialogs and the shared connector gallery are integrated. See [REFERENCE_INTERACTIONS.md](REFERENCE_INTERACTIONS.md) for the concrete behavior and checks. Existing cloud/provider launch limits below still apply.
 - [x] FastAPI, React/TypeScript, PostgreSQL; reproducible locked dependency installation.
 - [x] Private single-owner workspace token; persisted business profiles and goals.
