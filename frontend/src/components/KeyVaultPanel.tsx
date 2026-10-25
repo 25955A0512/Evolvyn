@@ -269,7 +269,7 @@ export function KeyVaultPanel({ api }: { api: ReturnType<typeof client> }) {
           )}
           {modal === "key" ? (
             <form
-              className="dashboard-dialog-form"
+              className="dashboard-dialog-form vault-key-dialog-form"
               onSubmit={(e) => {
                 e.preventDefault();
                 const f = new FormData(e.currentTarget);
@@ -337,6 +337,16 @@ export function KeyVaultPanel({ api }: { api: ReturnType<typeof client> }) {
               </label>
               <small>Encrypted at rest. Your key is never displayed.</small>
               <footer>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setModal("");
+                    setError("");
+                  }}
+                >
+                  Cancel
+                </button>
                 <button className="studio-primary" disabled={busy}>
                   {busy ? "Checking key…" : "Save key"}
                 </button>

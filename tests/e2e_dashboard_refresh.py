@@ -30,9 +30,19 @@ try:
   expect(page.get_by_role('button',name='Use for all agents',exact=True)).to_have_count(0)
   expect(page.get_by_role('button',name='Load available models',exact=True)).to_have_count(0)
   page.get_by_role('button',name='Add key',exact=True).click();dialog=page.get_by_role('dialog',name='Add a key');assert dialog.get_by_label('Credential provider').locator('option').all_text_contents()==['Google Gemini','Groq'];dialog.get_by_label('Credential provider').select_option('groq');dialog.get_by_label('Secret value').fill('synthetic-groq-'+uuid4().hex);dialog.get_by_label('Credential name').fill('Synthetic Groq');dialog.get_by_role('button',name='Save key',exact=True).click();expect(dialog).to_have_count(0)
-  expect(page.locator('.default-model-stat')).to_contain_text('llama-3.3-70b-versatile');page.screenshot(path=str(out/'dashboard-keyvault.png'),full_page=True)
+  expect(page.locator('.default-model-stat')).to_contain_text('openai/gpt-oss-20b');page.screenshot(path=str(out/'dashboard-keyvault.png'),full_page=True)
+  # A replacement failure must leave the prior grant intact and actions visible.
+  groq_card=page.locator('.dashboard-connector-card').filter(has_text='Synthetic Groq');groq_card.get_by_role('button',name='Replace',exact=True).click();dialog=page.get_by_role('dialog',name='Replace key');dialog.get_by_label('Secret value').fill('synthetic-groq-replacement-'+uuid4().hex)
+  before=page.request.get(base+'/api/vault').json()
+  page.route('**/api/vault/model-key/*',lambda route:route.fulfill(status=502,content_type='application/json',body='{"detail":"Synthetic Groq compatibility failure. The previous key and default were kept."}'))
+  dialog.get_by_role('button',name='Save key',exact=True).click();expect(dialog.get_by_role('alert')).to_contain_text('previous key and default were kept')
+  for width,height in [(1280,650),(390,700)]:
+   page.set_viewport_size({'width':width,'height':height});expect(dialog.get_by_role('button',name='Save key',exact=True)).to_be_in_viewport();expect(dialog.get_by_role('button',name='Cancel',exact=True)).to_be_in_viewport();assert dialog.evaluate('e=>e.scrollWidth<=e.clientWidth')
+  page.screenshot(path=str(out/'groq-replace-error-mobile.png'))
+  after=page.request.get(base+'/api/vault').json();assert before['bindings']==after['bindings'] and before['credentials']==after['credentials']
+  page.unroute('**/api/vault/model-key/*');page.set_viewport_size({'width':1440,'height':960});dialog.get_by_role('button',name='Save key',exact=True).click();expect(dialog).to_have_count(0)
   page.get_by_role('navigation',name='Vault sections').get_by_role('button',name='Agent routes',exact=True).click();expect(page.get_by_role('table')).to_contain_text('Groq');expect(page.get_by_role('button',name='Add override',exact=True)).to_have_count(0)
-  routes=page.request.get(base+'/api/vault').json()['effective_routes'];assert {r['provider'] for r in routes.values()}=={'groq'} and {r['model'] for r in routes.values()}=={'llama-3.3-70b-versatile'}
+  routes=page.request.get(base+'/api/vault').json()['effective_routes'];assert {r['provider'] for r in routes.values()}=={'groq'} and {r['model'] for r in routes.values()}=={'openai/gpt-oss-20b'}
   page.goto(base+'/keyvault');page.get_by_role('button',name='Add key',exact=True).click();page.keyboard.press('Escape');expect(page.get_by_role('dialog',name='Add a key',exact=True)).to_have_count(0)
   conv=post('/conversations',{'title':'Dashboard evidence'})
   page.goto(base+'/discussionroom');expect(page.get_by_role('heading',name='Discussion room',exact=True)).to_be_visible();page.get_by_label('Discussion conversation').select_option(conv['id'])

@@ -1077,3 +1077,30 @@
     flex-wrap: nowrap;
   }
 }
+/* Keep key actions visible when errors or browser zoom reduce dialog space. */
+.workspace-dialog[open]:has(> .vault-key-dialog-form) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.workspace-dialog:has(> .vault-key-dialog-form) > header {
+  flex-shrink: 0;
+  margin-bottom: 14px;
+}
+.workspace-dialog:has(> .vault-key-dialog-form) > .error {
+  flex-shrink: 0;
+  max-height: 20dvh;
+  overflow: auto;
+}
+.workspace-dialog > .vault-key-dialog-form {
+  min-height: 0;
+  overflow: auto;
+}
+.vault-key-dialog-form > footer {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 0 4px;
+  margin-top: 0;
+  background: white;
+  border-top: 1px solid #e6eae5;
+}

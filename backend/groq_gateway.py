@@ -4,11 +4,13 @@ import httpx
 from backend.model_errors import ModelFailure
 from backend.agent_memory import reject_secrets
 
-async def completion(messages,model,credential,limit=700,json_output=False,max_chars=16000):
+async def completion(messages,model,credential,limit=700,json_output=False,max_chars=16000,timeout_seconds=40):
     if not credential:raise ModelFailure('model_not_configured','Save a Gemini or Groq key in Key vault.')
     payload={'model':model,'messages':messages,'max_completion_tokens':min(8192,max(1,limit)),'temperature':0.1,'stream':False}
+    if model.startswith('openai/gpt-oss-'):payload.update(reasoning_effort='low',include_reasoning=False)
+    elif model.startswith('qwen/qwen3-'):payload.update(reasoning_effort='none',reasoning_format='hidden')
     if json_output:payload['response_format']={'type':'json_object'}
-    async with httpx.AsyncClient(timeout=httpx.Timeout(40,connect=8),follow_redirects=False) as client:
+    async with httpx.AsyncClient(timeout=httpx.Timeout(timeout_seconds,connect=min(8,timeout_seconds)),follow_redirects=False) as client:
         async with client.stream('POST','https://api.groq.com/openai/v1/chat/completions',headers={'Authorization':'Bearer '+credential},json=payload) as response:
             response.raise_for_status();chunks=[];size=0
             async for chunk in response.aiter_bytes():

@@ -7,7 +7,7 @@ original=httpx.AsyncClient
 TEXT='Controlled specialist response. Validate the supplied evidence before changing the plan.'+'\n\n'+'\n\n'.join('Synthetic detail '+str(i)+': this paragraph exercises reading and scrolling of a long specialist answer. No live account was accessed.' for i in range(12))
 async def provider(request):
     if request.method=='GET':
-        if request.url.host=='api.groq.com':return httpx.Response(200,json={'data':[{'id':'llama-3.3-70b-versatile','active':True},{'id':'whisper-large-v3','active':True}]})
+        if request.url.host=='api.groq.com':return httpx.Response(200,json={'data':[{'id':'openai/gpt-oss-20b','active':True},{'id':'whisper-large-v3','active':True}]})
         return httpx.Response(200,json={'models':[{'name':'models/gemini-2.5-flash-lite','supportedGenerationMethods':['generateContent']}]})
     body=json.loads(request.content)
     if request.url.host=='api.groq.com':return httpx.Response(200,json={'choices':[{'message':{'content':'{"ok":true}' if body.get('response_format') else TEXT},'finish_reason':'stop'}]})
