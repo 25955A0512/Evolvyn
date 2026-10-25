@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Navigation cleanup: removed Agent harness and Governance screens and their data fetches from Agent control center. MCP servers, Tool registry and argument-bound tool approvals remain. Canvas is removed from dashboard/studio navigation, composer shortcuts and public routes; existing backend execution, access-policy enforcement and saved records are preserved.
+
 Account connectors: registry-first setup layout and visible authorization actions are fixed; Drive can reuse a complete Google sign-in Web client configuration while keeping separate consent. Added Google Drive, Slack and Shopify read-only OAuth into the existing vault/MCP registry, retaining GitHub OAuth. Healthy servers are promoted and setup/failed servers collapsed. Drive grants renew; Slack/Shopify expiry requires reconnect. Provider application registration and live approval/acceptance remain operator steps. See [account connector setup](ACCOUNT_CONNECTOR_OAUTH.md).
 
 Dashboard refresh: corrected discussion response visibility with first-answer reveal, an expanded transcript, collapsed handoffs and response/review navigation. Compact key vault dialogs and route controls, connected/discover/tools views, focused discussion composer, configurable Growth Insights widgets with real product chart/table, and schedule summaries are implemented. Browser acceptance covers the existing growth approval flow and mobile layouts with controlled provider boundaries. See [dashboard scope and checks](DASHBOARD_REFRESH.md).

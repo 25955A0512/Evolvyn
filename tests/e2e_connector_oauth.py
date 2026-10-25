@@ -32,6 +32,9 @@ try:
   for pattern in ['https://accounts.google.com/o/oauth2/v2/auth**','https://slack.com/oauth/v2/authorize**','https://synthetic-store.myshopify.com/admin/oauth/authorize**']:page.route(pattern,consent)
   # Load the registry first: no AgentWorkspace CSS may have been cached.
   page.goto(base+'/mcp-registry')
+  expect(page.locator('.control-nav > button')).to_have_count(2)
+  expect(page.locator('.control-nav').get_by_role('button',name='Agent harness',exact=False)).to_have_count(0)
+  expect(page.locator('.control-nav').get_by_role('button',name='Governance',exact=False)).to_have_count(0)
   accounts=page.get_by_role('region',name='OAuth accounts')
   accounts.locator('.dashboard-connector-card').filter(has=page.get_by_role('heading',name='Google Drive',exact=True)).get_by_role('button',name='Setup',exact=True).click()
   dialog=page.get_by_role('dialog',name='Google Drive setup');expect(dialog).to_be_visible()
@@ -56,6 +59,9 @@ try:
   page.screenshot(path=str(out/'oauth-business-accounts.png'),full_page=True)
   accounts=page.get_by_role('region',name='OAuth accounts');accounts.get_by_role('button',name='Disconnect Slack',exact=True).click();page.get_by_role('dialog',name='Disconnect account').get_by_role('button',name='Disconnect',exact=True).click();expect(accounts).to_contain_text('Local credentials erased')
   page.set_viewport_size({'width':390,'height':844});assert page.evaluate('document.documentElement.scrollWidth<=innerWidth');page.get_by_label('Search integrations').fill('Shopify');expect(accounts.get_by_role('heading',name='Shopify',exact=True)).to_be_visible();expect(accounts.get_by_role('heading',name='Google Drive',exact=True)).to_have_count(0)
+  page.goto(base+'/product-studio');expect(page.locator('.studio-sidebar').get_by_role('button',name='Canvas',exact=True)).to_have_count(0)
+  page.goto(base+'/dashboard');expect(page.get_by_text('Open Canvas',exact=True)).to_have_count(0)
+  page.goto(base+'/canvas');expect(page.get_by_role('heading',name='Page not found',exact=True)).to_be_visible()
   assert not errors,errors
   browser.close();print('CONNECTOR OAUTH PASS: Drive/Slack/Shopify consent redirect → controlled provider HTTP → verified identity → encrypted vault → actual stdio MCP registration → connection tests → disconnect confirmation → mobile/search. No live provider acceptance claimed.',flush=True)
 finally:

@@ -1150,7 +1150,6 @@ function App() {
                   onUpload={() => uploadInput.current?.click()}
                   onConnections={() => manageConnections()}
                   onBuild={() => setStudio("build")}
-                  onCanvas={() => setStudio("canvas")}
                   onReports={() => setPanel("reports")}
                   api={api}
                   conversations={(current

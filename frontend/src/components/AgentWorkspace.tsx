@@ -24,7 +24,6 @@ import type { Convo } from "../types";
 import { type ManageConnections } from "./ToolAccess";
 import { ProductStudio } from "./ProductStudio";
 import { DiscussionRoom } from "./DiscussionRoom";
-import { DesignCanvas } from "./DesignCanvas";
 import { GrowthWorkspace } from "./GrowthWorkspace";
 export type StudioTab =
   | "build"
@@ -33,7 +32,6 @@ export type StudioTab =
   | "memory"
   | "vault"
   | "integrations"
-  | "canvas"
   | "growth"
   | "runtime";
 type API = ReturnType<typeof client>;
@@ -652,7 +650,7 @@ export function AgentWorkspace({
   const [advancedOpen, setAdvancedOpen] = useState(
     () =>
       sessionStorage.getItem("evolvyn-studio-tools") === "open" ||
-      !["build", "growth", "discuss", "canvas"].includes(initialTab),
+      !["build", "growth", "discuss"].includes(initialTab),
   );
   const [tab, setTabState] = useState<StudioTab>(initialTab);
   function setTab(value: StudioTab) {
@@ -661,13 +659,12 @@ export function AgentWorkspace({
   }
   useEffect(() => {
     setTabState(initialTab);
-    if (!["build", "growth", "discuss", "canvas"].includes(initialTab))
+    if (!["build", "growth", "discuss"].includes(initialTab))
       setAdvancedOpen(true);
   }, [initialTab]);
   const tabs = [
     { id: "build", name: "Build a product", icon: Code2 },
     { id: "growth", name: "Growth insights", icon: Brain },
-    { id: "canvas", name: "Canvas", icon: Workflow },
     { id: "runtime", name: "Shared runtime", icon: Shield },
     { id: "discuss", name: "Discussion room", icon: Users },
     { id: "agents", name: "Agents", icon: Workflow },
@@ -691,9 +688,7 @@ export function AgentWorkspace({
         </div>
         <nav aria-label="Studio modules">
           {tabs
-            .filter((t) =>
-              ["build", "growth", "discuss", "canvas"].includes(t.id),
-            )
+            .filter((t) => ["build", "growth", "discuss"].includes(t.id))
             .map((t) => (
               <button
                 className={tab === t.id ? "selected" : ""}
@@ -728,10 +723,7 @@ export function AgentWorkspace({
             <summary>Workspace tools</summary>
             <div className="studio-advanced-links">
               {tabs
-                .filter(
-                  (t) =>
-                    !["build", "growth", "discuss", "canvas"].includes(t.id),
-                )
+                .filter((t) => !["build", "growth", "discuss"].includes(t.id))
                 .map((t) => (
                   <button
                     className={tab === t.id ? "selected" : ""}
@@ -809,14 +801,6 @@ export function AgentWorkspace({
           </div>
         </header>
         <div className="studio-scroll">
-          {tab === "canvas" && (
-            <DesignCanvas
-              onNavigate={onNavigate}
-              api={api}
-              projectId={projectId}
-              conversation={conversation}
-            />
-          )}
           {tab === "growth" && (
             <GrowthWorkspace
               onManage={onManage}
@@ -901,7 +885,6 @@ function RuntimePanel({
     specialists: "discuss",
     models: "vault",
     memory: "memory",
-    canvas: "canvas",
     growth: "growth",
   };
   return (
@@ -910,9 +893,9 @@ function RuntimePanel({
         <span className="eyebrow">ONE SHARED EXECUTION SYSTEM</span>
         <h1>A connected runtime for every product.</h1>
         <p>
-          The builder, growth review and canvas use these same services. Product
-          source exports include this complete runtime in an isolated
-          deployment, with fresh accounts, policies and credentials.
+          The builder and growth review use these same services. Product source
+          exports include this complete runtime in an isolated deployment, with
+          fresh accounts, policies and credentials.
         </p>
       </div>
       {error && (
@@ -921,17 +904,19 @@ function RuntimePanel({
         </p>
       )}
       <div className="studio-two-columns">
-        {runtime?.components.map((c: any) => (
-          <button
-            className="studio-card runtime-component"
-            key={c.id}
-            onClick={() => (tabs[c.id] ? onTab(tabs[c.id]) : onManage())}
-          >
-            <Shield size={22} />
-            <strong>{c.name}</strong>
-            <span>Open configuration →</span>
-          </button>
-        ))}
+        {runtime?.components
+          .filter((c: any) => c.id !== "canvas")
+          .map((c: any) => (
+            <button
+              className="studio-card runtime-component"
+              key={c.id}
+              onClick={() => (tabs[c.id] ? onTab(tabs[c.id]) : onManage())}
+            >
+              <Shield size={22} />
+              <strong>{c.name}</strong>
+              <span>Open configuration →</span>
+            </button>
+          ))}
       </div>
       <h2>Discover tools by ontology</h2>
       <div className="canvas-toolbar">

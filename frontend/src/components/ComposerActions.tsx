@@ -5,7 +5,6 @@ import { UiIcon } from "./UiIcon";
 export function ComposerActions({
   onUpload,
   onConnections,
-  onCanvas,
   onReports,
   onBuild,
   disabled,
@@ -16,7 +15,6 @@ export function ComposerActions({
 }: {
   onUpload: () => void;
   onConnections: () => void;
-  onCanvas: () => void;
   onReports: () => void;
   onBuild: () => void;
   disabled: boolean;
@@ -134,12 +132,6 @@ export function ComposerActions({
       title: "Build a product",
       caption: "Open your development workspace",
       action: onBuild,
-    },
-    {
-      icon: "automation",
-      title: "Open Canvas",
-      caption: "Design pages, workflows and automations",
-      action: onCanvas,
     },
   ];
   return (

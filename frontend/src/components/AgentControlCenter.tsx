@@ -5,18 +5,16 @@ import { UiIcon } from "./UiIcon";
 import {
   X,
   Server,
-  Workflow,
   Shield,
   Blocks,
   Check,
-  Play,
   RefreshCw,
   Plus,
   ArrowRight,
 } from "lucide-react";
 import type { client } from "../api";
 import type { Convo } from "../types";
-type Tab = "servers" | "tools" | "harness" | "governance";
+type Tab = "servers" | "tools";
 export function AgentControlCenter({
   api,
   conversation,
@@ -35,12 +33,7 @@ export function AgentControlCenter({
   const [tab, setTab] = useState<Tab>(initialTab);
   const [servers, setServers] = useState<any[]>([]);
   const [tools, setTools] = useState<any[]>([]);
-  const [graphs, setGraphs] = useState<any[]>([]);
   const [approvals, setApprovals] = useState<any[]>([]);
-  const [executions, setExecutions] = useState<any[]>([]);
-  const [policy, setPolicy] = useState<any>(null);
-  const [projects, setProjects] = useState<any[]>([]);
-  const [members, setMembers] = useState<any[]>([]);
   const [credentialPrefix, setCredentialPrefix] = useState("EVOLVYN_MCP_");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -48,14 +41,6 @@ export function AgentControlCenter({
   const [transport, setTransport] = useState("stdio");
   const [adapter, setAdapter] = useState("mcp");
   const [serverId, setServerId] = useState("");
-  const [goal, setGoal] = useState(
-    "Analyze conversion evidence and save a reviewed project note",
-  );
-  const [graphText, setGraphText] = useState("");
-  const [graphId, setGraphId] = useState("");
-  const [subgoals, setSubgoals] = useState<any[]>([]);
-  const [mode, setMode] = useState("evidence");
-  const [active, setActive] = useState<any>(null);
   const [invoking, setInvoking] = useState<any>(null);
   const [argumentsText, setArgumentsText] = useState("{}");
   const [result, setResult] = useState<any>(null);
@@ -78,34 +63,22 @@ export function AgentControlCenter({
     return () => cancelAnimationFrame(frame);
   }, [initialServerName]);
   const [toolSearch, setToolSearch] = useState("");
-  const watch = useRef<AbortController | null>(null);
   const fail = (e: unknown) =>
     setError(e instanceof Error ? e.message : String(e));
   async function load() {
-    const [a, b, c, d, e, f, g, h, i] = await Promise.all([
+    const [servers, tools, approvals, prefix] = await Promise.all([
       api.json("/mcp/servers"),
       api.json("/tool-registry"),
-      api.json("/harness/graphs"),
       api.json("/tool-approvals"),
-      api.json("/governance/policy"),
-      api.json("/projects"),
-      api.json("/organizations/members"),
-      api.json("/harness/executions"),
       api.json("/mcp/credential-prefix"),
     ]);
-    setServers(a);
-    setTools(b);
-    setGraphs(c);
-    setApprovals(d);
-    setPolicy(e);
-    setProjects(f);
-    setMembers(g);
-    setExecutions(h);
-    setCredentialPrefix(i.prefix);
+    setServers(servers);
+    setTools(tools);
+    setApprovals(approvals);
+    setCredentialPrefix(prefix.prefix);
   }
   useEffect(() => {
     load().catch(fail);
-    return () => watch.current?.abort();
   }, []);
   async function action(fn: () => Promise<unknown>, message: string) {
     setBusy(true);
@@ -120,26 +93,6 @@ export function AgentControlCenter({
     } finally {
       setBusy(false);
     }
-  }
-  function startWatch(id: string) {
-    watch.current?.abort();
-    const controller = new AbortController();
-    watch.current = controller;
-    api
-      .watch(
-        id,
-        (run: any) => {
-          setActive(run);
-          if (!["CREATED", "RUNNING"].includes(run.state)) {
-            load().catch(fail);
-            onRefresh();
-          }
-        },
-        controller.signal,
-      )
-      .catch((e) => {
-        if (e.name !== "AbortError") fail(e);
-      });
   }
   function invoke(tool: any) {
     setInvoking(tool);
@@ -168,7 +121,6 @@ export function AgentControlCenter({
     setArgumentsText(JSON.stringify(values, null, 2));
   }
   const chosenServer = servers.find((s) => s.id === serverId);
-  const pending = active?.graph_checkpoint?.pending;
   return (
     <div className="control-overlay">
       <section
@@ -217,18 +169,6 @@ export function AgentControlCenter({
                   icon: Blocks,
                   caption: "Capabilities & approvals",
                 },
-                {
-                  id: "harness",
-                  name: "Agent harness",
-                  icon: Workflow,
-                  caption: "Plans, graphs & execution",
-                },
-                {
-                  id: "governance",
-                  name: "Governance",
-                  icon: Shield,
-                  caption: "Policies & project access",
-                },
               ] as const
             ).map((item) => (
               <button
@@ -246,8 +186,6 @@ export function AgentControlCenter({
                       {
                         servers: "plug-connected",
                         tools: "layout-grid",
-                        harness: "git-branch",
-                        governance: "shield-check",
                       } as const
                     )[item.id]
                   }
@@ -269,18 +207,6 @@ export function AgentControlCenter({
             </div>
           </nav>
           <main className="control-main">
-            <details className="control-purpose">
-              <summary>What does the Agent control center do?</summary>
-              <p>
-                This is Evolvyn’s shared configuration and operations area.
-                Connect MCP servers and verify health, register their tools,
-                inspect workflow executions and approval requests, and set
-                organization/project permissions. The development and business
-                screens use these same connections through Connections & tools.
-                Reading evidence and approving a write are separate permissions;
-                a connected tool cannot approve its own actions.
-              </p>
-            </details>
             {error && (
               <div role="alert" className="error">
                 {error}
@@ -965,524 +891,6 @@ export function AgentControlCenter({
                     {a.error && <p className="control-error">{a.error}</p>}
                   </article>
                 ))}
-              </>
-            )}
-            {tab === "harness" && (
-              <>
-                <div className="control-title">
-                  <span className="eyebrow">EXECUTION RUNTIME</span>
-                  <h2>From goal to governed execution.</h2>
-                  <p>
-                    Generate a task decomposition, edit its graph, and inspect
-                    real checkpoints. Branches, joins, retries and loops run
-                    within explicit budgets.
-                  </p>
-                </div>
-                <div className="control-columns">
-                  <div>
-                    <form
-                      className="control-card control-form"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        action(async () => {
-                          if (!conversation)
-                            throw Error(
-                              "Open a conversation with evidence first",
-                            );
-                          const plan = await api.json("/harness/plan", {
-                            method: "POST",
-                            body: JSON.stringify({
-                              goal,
-                              conversation_id: conversation.id,
-                              mode,
-                            }),
-                          });
-                          setGraphText(
-                            JSON.stringify(plan.definition, null, 2),
-                          );
-                          setSubgoals(plan.subgoals);
-                          setGraphId("");
-                        }, "Goal decomposed into executable subgoals");
-                      }}
-                    >
-                      <h3>Decompose a goal</h3>
-                      <label>
-                        Business goal
-                        <textarea
-                          value={goal}
-                          onChange={(e) => setGoal(e.target.value)}
-                          required
-                          minLength={3}
-                        />
-                      </label>
-                      <label>
-                        Agent model
-                        <select
-                          value={mode}
-                          onChange={(e) => setMode(e.target.value)}
-                        >
-                          <option value="evidence">
-                            Deterministic evidence
-                          </option>
-                          <option value="default">
-                            Per-agent vault routes
-                          </option>
-                          <option value="local">Local AI · no key</option>
-                        </select>
-                      </label>
-                      <small>
-                        {conversation
-                          ? "Evidence scope: " + conversation.title
-                          : "Open a business conversation to provide an authorized evidence scope."}
-                      </small>
-                      <button
-                        className="primary"
-                        disabled={busy || !conversation}
-                      >
-                        Generate execution plan
-                      </button>
-                    </form>
-                    {!!subgoals.length && (
-                      <div className="control-card subgoal-plan">
-                        {subgoals.map((g, i) => (
-                          <div key={g.node}>
-                            <span>{String(i + 1).padStart(2, "0")}</span>
-                            <div>
-                              <strong>{g.node}</strong>
-                              <p>{g.purpose}</p>
-                            </div>
-                            <span className="status-pill">{g.type}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    <label>
-                      Saved graphs
-                      <select
-                        value={graphId}
-                        onChange={(e) => {
-                          const graph = graphs.find(
-                            (g) => g.id === e.target.value,
-                          );
-                          if (graph) {
-                            const { id, ...definition } = graph;
-                            setGraphId(id);
-                            setGraphText(JSON.stringify(definition, null, 2));
-                            setSubgoals([]);
-                          }
-                        }}
-                      >
-                        <option value="">New graph</option>
-                        {graphs.map((g) => (
-                          <option key={g.id} value={g.id}>
-                            {g.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    {graphText && (
-                      <form
-                        className="control-card control-form"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          action(async () => {
-                            const graph = await api.json(
-                              "/harness/graphs" +
-                                (graphId ? "/" + graphId : ""),
-                              {
-                                method: graphId ? "PUT" : "POST",
-                                body: JSON.stringify(JSON.parse(graphText)),
-                              },
-                            );
-                            setGraphId(graph.id);
-                          }, "Graph validated and saved");
-                        }}
-                      >
-                        <label>
-                          Executable graph definition
-                          <textarea
-                            className="code-editor graph-editor"
-                            aria-label="Graph definition"
-                            value={graphText}
-                            onChange={(e) => setGraphText(e.target.value)}
-                          />
-                        </label>
-                        <div className="control-card-actions">
-                          <button className="primary" disabled={busy}>
-                            Save graph
-                          </button>
-                          {graphId && (
-                            <button
-                              type="button"
-                              disabled={busy || !conversation}
-                              onClick={() =>
-                                action(async () => {
-                                  const run = await api.json(
-                                    "/harness/graphs/" + graphId + "/run",
-                                    {
-                                      method: "POST",
-                                      body: JSON.stringify({
-                                        conversation_id: conversation!.id,
-                                      }),
-                                    },
-                                  );
-                                  setActive(run);
-                                  startWatch(run.id);
-                                }, "Graph execution started")
-                              }
-                            >
-                              Run graph
-                              <Play size={13} />
-                            </button>
-                          )}
-                        </div>
-                      </form>
-                    )}
-                  </div>
-                  <div>
-                    <h3>Execution inspector</h3>
-                    {!active && (
-                      <div className="control-empty">
-                        Run a saved graph to watch its actual nodes,
-                        checkpoints, approvals and budgets.
-                      </div>
-                    )}
-                    {active && (
-                      <article className="control-card">
-                        <div className="control-card-heading">
-                          <strong>{active.definition?.name}</strong>
-                          <span
-                            className={
-                              "status-pill " +
-                              (active.state === "COMPLETED" ? "healthy" : "")
-                            }
-                          >
-                            {active.state.replaceAll("_", " ")}
-                          </span>
-                        </div>
-                        <div className="execution-metrics">
-                          <span>
-                            {active.graph_checkpoint?.steps || 0} steps
-                          </span>
-                          <span>
-                            {active.graph_checkpoint?.tools_used || 0} tool
-                            calls
-                          </span>
-                          <span>
-                            {active.graph_checkpoint?.tokens_reserved || 0}{" "}
-                            token budget reserved
-                          </span>
-                        </div>
-                        <div className="control-events">
-                          {active.events?.map((event: any, i: number) => (
-                            <div key={i}>
-                              <Check size={12} />
-                              <span>
-                                <strong>{event.stage}</strong>
-                                {event.detail}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                        {pending && active.state === "WAITING_FOR_APPROVAL" && (
-                          <section className="approval">
-                            <h3>Review exact action arguments</h3>
-                            <p>
-                              {pending.tool || pending.node} · {pending.risk}
-                            </p>
-                            <pre>
-                              {JSON.stringify(pending.arguments, null, 2)}
-                            </pre>
-                            <div className="control-card-actions">
-                              {[true, false].map((approve) => (
-                                <button
-                                  key={String(approve)}
-                                  className={approve ? "primary" : ""}
-                                  disabled={busy}
-                                  onClick={() =>
-                                    action(
-                                      async () => {
-                                        const run = await api.json(
-                                          "/harness/executions/" +
-                                            active.id +
-                                            "/decision",
-                                          {
-                                            method: "POST",
-                                            body: JSON.stringify({
-                                              approve,
-                                              binding: pending.binding,
-                                            }),
-                                          },
-                                        );
-                                        setActive(run);
-                                        if (run.state === "CREATED")
-                                          startWatch(run.id);
-                                      },
-                                      approve
-                                        ? "Action approved; graph resumed"
-                                        : "Action rejected",
-                                    )
-                                  }
-                                >
-                                  {approve ? "Approve & continue" : "Reject"}
-                                </button>
-                              ))}
-                            </div>
-                          </section>
-                        )}
-                        {active.error && (
-                          <p className="control-error">{active.error}</p>
-                        )}
-                        {active.output && (
-                          <details open={active.state === "COMPLETED"}>
-                            <summary>Actual execution output</summary>
-                            <pre>{active.output}</pre>
-                          </details>
-                        )}
-                        {["CREATED", "RUNNING"].includes(active.state) && (
-                          <button
-                            onClick={() =>
-                              action(async () => {
-                                setActive(
-                                  await api.json(
-                                    "/executions/" + active.id + "/cancel",
-                                    { method: "POST" },
-                                  ),
-                                );
-                              }, "Graph cancelled")
-                            }
-                          >
-                            Cancel execution
-                          </button>
-                        )}
-                      </article>
-                    )}
-                    <h3>Persistent execution history</h3>
-                    {executions.slice(0, 10).map((run) => (
-                      <button
-                        className="execution-history"
-                        key={run.id}
-                        onClick={() => {
-                          setActive(run);
-                          if (["CREATED", "RUNNING"].includes(run.state))
-                            startWatch(run.id);
-                        }}
-                      >
-                        <Workflow size={15} />
-                        <span>
-                          {run.definition?.name}
-                          <small>{run.state}</small>
-                        </span>
-                        <ArrowRight size={14} />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-            {tab === "governance" && policy && (
-              <>
-                <div className="control-title">
-                  <span className="eyebrow">BACKEND POLICY LAYER</span>
-                  <h2>Set the boundaries. Keep control.</h2>
-                  <p>
-                    These rules are evaluated during actual resource access and
-                    tool execution. Model output cannot change them.
-                  </p>
-                </div>
-                <div className="control-columns">
-                  <form
-                    className="control-card control-form"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const d = Object.fromEntries(
-                        new FormData(e.currentTarget),
-                      );
-                      action(
-                        () =>
-                          api.json("/governance/policy", {
-                            method: "PUT",
-                            body: JSON.stringify({
-                              tool_allowlist: String(d.tool_allowlist)
-                                .split(",")
-                                .map((v) => v.trim())
-                                .filter(Boolean),
-                              denied_tools: String(d.denied_tools)
-                                .split(",")
-                                .map((v) => v.trim())
-                                .filter(Boolean),
-                              max_tool_risk: d.max_tool_risk,
-                              max_tool_calls: Number(d.max_tool_calls),
-                              max_run_seconds: Number(d.max_run_seconds),
-                              allow_external_processing:
-                                d.allow_external_processing === "on",
-                              allowed_mcp_hosts: String(d.allowed_mcp_hosts)
-                                .split(",")
-                                .map((v) => v.trim())
-                                .filter(Boolean),
-                            }),
-                          }),
-                        "Organization governance policy saved",
-                      );
-                    }}
-                  >
-                    <h3>Organization execution policy</h3>
-                    <label>
-                      Allowed tools
-                      <input
-                        name="tool_allowlist"
-                        defaultValue={policy.tool_allowlist.join(", ")}
-                        placeholder="* or comma-separated tool names"
-                      />
-                    </label>
-                    <label>
-                      Denied tools
-                      <input
-                        name="denied_tools"
-                        defaultValue={policy.denied_tools.join(", ")}
-                      />
-                    </label>
-                    <label>
-                      Maximum risk
-                      <select
-                        name="max_tool_risk"
-                        defaultValue={policy.max_tool_risk}
-                      >
-                        <option value="read">Read only</option>
-                        <option value="internal_write">
-                          Internal writes with approval
-                        </option>
-                        <option value="external_write">
-                          External writes with approval
-                        </option>
-                        <option value="critical">
-                          Critical actions with approval
-                        </option>
-                      </select>
-                    </label>
-                    <div className="control-form-row">
-                      <label>
-                        Tool-call budget
-                        <input
-                          name="max_tool_calls"
-                          type="number"
-                          min={1}
-                          max={64}
-                          defaultValue={policy.max_tool_calls}
-                        />
-                      </label>
-                      <label>
-                        Run duration (seconds)
-                        <input
-                          name="max_run_seconds"
-                          type="number"
-                          min={10}
-                          max={600}
-                          defaultValue={policy.max_run_seconds}
-                        />
-                      </label>
-                    </div>
-                    <label className="control-checkbox">
-                      <input
-                        name="allow_external_processing"
-                        type="checkbox"
-                        defaultChecked={policy.allow_external_processing}
-                      />
-                      Allow explicitly selected remote providers
-                    </label>
-                    <label>
-                      Approved remote MCP hostnames
-                      <input
-                        name="allowed_mcp_hosts"
-                        defaultValue={policy.allowed_mcp_hosts.join(", ")}
-                        placeholder="mcp.example.com"
-                      />
-                    </label>
-                    <small>
-                      Approval is always required for consequential tools,
-                      regardless of this policy's risk ceiling.
-                    </small>
-                    <button className="primary" disabled={busy}>
-                      <Shield size={14} />
-                      Save governance policy
-                    </button>
-                  </form>
-                  <div>
-                    <h3>Project resource access</h3>
-                    {!projects.length && (
-                      <div className="control-empty">
-                        Create a business project to configure its member-level
-                        access.
-                      </div>
-                    )}
-                    {projects.map((p) => (
-                      <form
-                        className="control-card control-form"
-                        key={p.id}
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const d = new FormData(e.currentTarget);
-                          action(
-                            () =>
-                              api.json("/projects/" + p.id + "/access", {
-                                method: "PUT",
-                                body: JSON.stringify({
-                                  access: d.get("access"),
-                                  members: d.getAll("members"),
-                                }),
-                              }),
-                            "Project resource access updated",
-                          );
-                        }}
-                      >
-                        <h3>{p.name}</h3>
-                        <p>{p.goal}</p>
-                        <label>
-                          Visibility
-                          <select
-                            name="access"
-                            defaultValue={p.access || "organization"}
-                          >
-                            <option value="organization">
-                              Organization members
-                            </option>
-                            <option value="restricted">
-                              Selected members and administrators
-                            </option>
-                          </select>
-                        </label>
-                        {members.map((member) => (
-                          <label className="control-checkbox" key={member.id}>
-                            <input
-                              type="checkbox"
-                              name="members"
-                              value={member.id}
-                              defaultChecked={p.members?.includes(member.id)}
-                            />
-                            <span>
-                              {member.name}
-                              <small>
-                                {member.email} · {member.role}
-                              </small>
-                            </span>
-                          </label>
-                        ))}
-                        <button className="primary" disabled={busy}>
-                          Save project access
-                        </button>
-                      </form>
-                    ))}
-                    <div className="control-card control-safeguards">
-                      <Shield size={22} />
-                      <h3>Enforced at every boundary</h3>
-                      <p>
-                        Organization scope · Project membership · Tool allowlist
-                        · Input/output schemas · Risk ceiling · Argument-bound
-                        approval · Runtime budgets · Private-network protection
-                      </p>
-                    </div>
-                  </div>
-                </div>
               </>
             )}
           </main>
