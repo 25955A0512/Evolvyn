@@ -471,11 +471,7 @@ function AgentCatalog({
               value={route}
               onChange={(e) => setRoute(e.target.value)}
             >
-              <option value="default">Workspace vault / per-agent route</option>
-              <option value="local">Local model</option>
-              <option value="evidence">
-                Explicit evidence only · no model
-              </option>
+              <option value="default">Workspace key</option>
             </select>
           </label>
           <p>

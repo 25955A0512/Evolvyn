@@ -77,7 +77,7 @@ export function GrowthReview({
                     "Review growth snapshot " +
                     report.query +
                     ". Distinguish measurements from hypotheses; suggest promotion experiments and prioritized product changes with citations, owner, baseline and rollback.",
-                  mode: d.mode,
+                  mode: "default",
                   allow_fallback: false,
                   max_rounds: 2,
                 }),
@@ -108,9 +108,7 @@ export function GrowthReview({
           <label>
             Model route
             <select name="mode" defaultValue="default">
-              <option value="evidence">Evidence rules · no API key</option>
-              <option value="default">Organization / agent model routes</option>
-              <option value="local">Local AI</option>
+              <option value="default">Workspace key</option>
             </select>
           </label>
           <button

@@ -181,7 +181,7 @@ export function WorkflowCanvas({
                 body: JSON.stringify({
                   name: template.name,
                   focus: template.focus,
-                  mode: template.mode,
+                  mode: "default",
                   research: template.research,
                   citations: template.citations,
                   recommendations: template.recommendations,
@@ -228,12 +228,6 @@ export function WorkflowCanvas({
             onChange={(e) => setTemplate({ ...template, mode: e.target.value })}
           >
             <option value="default">Default agent model route</option>
-            <option value="openrouter">OpenRouter · your key</option>
-            <option value="local">Local AI · no API key</option>
-            <option value="evidence">Evidence-only fallback</option>
-            <option value="provider">OpenAI · optional key</option>
-            <option value="groq">Groq · optional key</option>
-            <option value="gemini">Gemini · optional key</option>
           </select>
         </label>
         <label className="checkbox-label">
@@ -290,7 +284,7 @@ export function WorkflowCanvas({
                   body: JSON.stringify({
                     text: template.focus,
                     workflow_id: template.id,
-                    mode: template.mode,
+                    mode: "default",
                     allow_fallback: false,
                   }),
                 });

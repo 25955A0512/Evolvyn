@@ -1179,10 +1179,9 @@ export function GrowthWorkspace({
                   <section className="growth-panel">
                     <h2>Run an analysis & create an experiment brief</h2>
                     <p>
-                      Use your workspace model route or explicitly choose
-                      evidence rules. The workflow uses current attached
-                      evidence; the saved snapshot above stays unchanged.
-                      Approval creates internal tasks only.
+                      Use your saved workspace key. The workflow uses current
+                      attached evidence; the saved snapshot above stays
+                      unchanged. Approval creates internal tasks only.
                     </p>
                     <div className="growth-inline-form">
                       <label>
@@ -1195,10 +1194,6 @@ export function GrowthWorkspace({
                           <option value="default">
                             Workspace / agent model route
                           </option>
-                          <option value="evidence">
-                            Evidence rules · no model
-                          </option>
-                          <option value="local">Local AI</option>
                         </select>
                       </label>
                       <button
@@ -1496,7 +1491,7 @@ export function GrowthWorkspace({
                           conversation_id: conversationId,
                           query: d.query,
                           interval_minutes: Number(d.interval_minutes),
-                          mode: "evidence",
+                          mode: "default",
                           allow_fallback: false,
                         }),
                       });

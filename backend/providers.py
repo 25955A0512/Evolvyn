@@ -88,8 +88,9 @@ async def response_chunks(report, question, history, mode="provider"):
     serialized=json.dumps(messages)
     reject_secrets(serialized)
     if credential and credential in serialized:raise ValueError('Credential found in model input')
-    if mode=='gemini':
-        from backend.gemini_gateway import completion
+    if mode in ('gemini','groq'):
+        if mode=='gemini':from backend.gemini_gateway import completion
+        else:from backend.groq_gateway import completion
         result=await completion(messages,model_for(mode,config),credential,min(8192,max(1,int(report.get('_output_limit',700)))),bool(schema),max_chars=min(64000,int(report.get('_max_response_chars',16000))))
         report['usage']={'provider':config['name'],'model':model_for(mode,config),**result['usage'],'cost_usd':None,'classification':'Provider-reported token counts'}
         yield result['choices'][0]['message']['content'];return

@@ -460,7 +460,7 @@ function App() {
       <div className="login">
         <div className="mark">e</div>
         <h1>Your business, evolving.</h1>
-        <p>Create your workspace or sign in. No OpenAI key is required.</p>
+        <p>Create your workspace or sign in. Connect a Gemini or Groq key to use AI.</p>
         <AccountAccess
           onAuthenticated={(organizationId) => {
             sessionStorage.setItem("evolvyn-organization", organizationId);
@@ -508,7 +508,7 @@ function App() {
               if (!response.ok) throw Error("Sample workspace could not start");
               const data = await response.json();
               sessionStorage.setItem("evolvyn-token", data.token);
-              setMode(data.analysis_mode || "evidence");
+              setMode("default");
               setDemoConversation(data.conversation_id);
               setBusiness(data.business_id);
               setToken(data.token);
@@ -524,7 +524,7 @@ function App() {
             : "Try a sample business →"}
         </button>
         <small>
-          Isolated synthetic data · local AI when available · 24-hour session
+          Isolated synthetic data · 24-hour session
         </small>
         {error && (
           <p role="alert" className="error">
@@ -807,10 +807,9 @@ function App() {
             <section className="welcome">
               <h1>Your connected tools</h1>
               <p>
-                Use local AI without an API key, or configure an optional
-                provider. Connection checks report what is available.
+                Connect Gemini or Groq in Key vault. All agents use your saved workspace key.
               </p>
-              {providers.map((p) => (
+              {providers.filter((p) => ["gemini", "groq"].includes(p.id)).map((p) => (
                 <div className="provider-card" key={p.id}>
                   <ConnectorArt name={p.name} size={27} />
                   <div>
@@ -846,7 +845,7 @@ function App() {
                 </div>
               ))}
               {integrations
-                .filter((i) => !i.name.includes("OpenAI"))
+                .filter((i) => !/OpenAI|OpenRouter|Local AI|Qwen/i.test(i.name))
                 .map((i) => (
                   <div className="integration" key={i.name}>
                     <strong>{i.name}</strong>
@@ -866,9 +865,7 @@ function App() {
 
               <p role="status">{providerStatus}</p>
               <p>
-                Local AI runs on this machine and needs no API key. Optional
-                remote providers use encrypted credentials configured in Key
-                vault. Local-only projects prevent remote model requests.
+                Gemini and Groq use encrypted credentials in Key vault. Project data restrictions still apply.
               </p>
             </section>
           ) : (
@@ -1210,11 +1207,6 @@ function App() {
                   onChange={(e) => setMode(e.target.value)}
                 >
                   <option value="default">Default model route</option>
-                  <option value="local">Local AI · no API key</option>
-                  <option value="evidence">Evidence only</option>
-                  <option value="provider">OpenAI · optional</option>
-                  <option value="groq">Groq · your key</option>
-                  <option value="gemini">Gemini · your key</option>
                 </select>
                 <button
                   disabled={busy || !!activeHere || text.trim().length < 3}

@@ -34,7 +34,6 @@ export function DiscussionRoom({
     [conv, setConv] = useState<any>(conversation),
     [goal, setGoal] = useState(""),
     [mode, setMode] = useState("default"),
-    [fallback, setFallback] = useState(false),
     [tools, setTools] = useState("[]"),
     [rounds, setRounds] = useState(2),
     [runs, setRuns] = useState<any[]>([]),
@@ -240,8 +239,6 @@ export function DiscussionRoom({
                 onChange={(e) => setMode(e.target.value)}
               >
                 <option value="default">Workspace models</option>
-                <option value="local">Local model</option>
-                <option value="evidence">Evidence rules · no AI</option>
               </select>
             </label>
             <label>
@@ -253,14 +250,6 @@ export function DiscussionRoom({
                 value={rounds}
                 onChange={(e) => setRounds(Number(e.target.value))}
               />
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={fallback}
-                onChange={(e) => setFallback(e.target.checked)}
-              />
-              Allow labeled offline fallback
             </label>
             <ToolAccess
               api={api}
@@ -563,7 +552,7 @@ export function DiscussionRoom({
                 conversation_id: c.id,
                 goal,
                 mode,
-                allow_fallback: fallback,
+                allow_fallback: false,
                 max_rounds: rounds,
                 max_seconds: 300,
                 max_output_tokens: 6144,

@@ -638,8 +638,6 @@ export function SocialGrowth({
                       onChange={(e) => setMode(e.target.value)}
                     >
                       <option value="default">Workspace default model</option>
-                      <option value="local">Local model</option>
-                      <option value="evidence">Evidence rules · no LLM</option>
                     </select>
                   </label>
                   <button

@@ -77,8 +77,9 @@ class AgentGateway:
                 async with httpx.AsyncClient(timeout=80 if selected=='local' else 30,trust_env=selected!='local') as client:
                     for attempt in range(2):
                         try:
-                            if selected=='gemini':
-                                from backend.gemini_gateway import completion
+                            if selected in ('gemini','groq'):
+                                if selected=='gemini':from backend.gemini_gateway import completion
+                                else:from backend.groq_gateway import completion
                                 payload=await completion(messages,model_for(selected,config),key,min(384 if selected=='local' else 512,definition['output_tokens']))
                             else:
                                 response=await client.post(config['url'],headers=headers,json={'model':model_for(selected,config),'messages':messages,'max_tokens':min(384 if selected=='local' else 512,definition['output_tokens']),'temperature':0.1})

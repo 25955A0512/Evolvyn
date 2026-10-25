@@ -26,15 +26,18 @@ try:
   page.get_by_role('button',name='Add key',exact=True).click();dialog=page.get_by_role('dialog',name='Add a key');expect(dialog).to_be_visible()
   dialog.get_by_label('Secret value').fill('synthetic-dashboard-'+uuid4().hex);dialog.get_by_label('Credential name').fill('Synthetic Gemini');dialog.get_by_role('button',name='Save key',exact=True).click();expect(dialog).to_have_count(0)
   expect(page.locator('.dashboard-connector-card')).to_contain_text('Synthetic Gemini')
-  page.get_by_role('button',name='Load available models',exact=True).click();dialog=page.get_by_role('dialog',name='Choose a model');dialog.get_by_label('Available Gemini model: Synthetic Gemini').select_option('synthetic-visible-model');dialog.get_by_role('button',name='Use for all agents',exact=True).click();expect(dialog).to_have_count(0)
-  expect(page.locator('.default-model-stat')).to_contain_text('synthetic-visible-model');page.screenshot(path=str(out/'dashboard-keyvault.png'),full_page=True)
-  page.get_by_role('navigation',name='Vault sections').get_by_role('button',name='Agent routes',exact=True).click();page.get_by_role('button',name='Add override',exact=True).click();dialog=page.get_by_role('dialog',name='Model route');dialog.get_by_label('Model route agent').select_option('reviewer');dialog.get_by_label('Route provider').select_option('evidence');dialog.get_by_role('button',name='Save route',exact=True).click();expect(page.locator('tr').filter(has_text='Quality and security reviewer')).to_contain_text('Override')
-  page.get_by_role('button',name='Reset',exact=True).click();expect(page.locator('tr').filter(has_text='Quality and security reviewer')).to_contain_text('Workspace default')
+  expect(page.locator('.default-model-stat')).to_contain_text('gemini-2.5-flash-lite')
+  expect(page.get_by_role('button',name='Use for all agents',exact=True)).to_have_count(0)
+  expect(page.get_by_role('button',name='Load available models',exact=True)).to_have_count(0)
+  page.get_by_role('button',name='Add key',exact=True).click();dialog=page.get_by_role('dialog',name='Add a key');assert dialog.get_by_label('Credential provider').locator('option').all_text_contents()==['Google Gemini','Groq'];dialog.get_by_label('Credential provider').select_option('groq');dialog.get_by_label('Secret value').fill('synthetic-groq-'+uuid4().hex);dialog.get_by_label('Credential name').fill('Synthetic Groq');dialog.get_by_role('button',name='Save key',exact=True).click();expect(dialog).to_have_count(0)
+  expect(page.locator('.default-model-stat')).to_contain_text('llama-3.3-70b-versatile');page.screenshot(path=str(out/'dashboard-keyvault.png'),full_page=True)
+  page.get_by_role('navigation',name='Vault sections').get_by_role('button',name='Agent routes',exact=True).click();expect(page.get_by_role('table')).to_contain_text('Groq');expect(page.get_by_role('button',name='Add override',exact=True)).to_have_count(0)
+  routes=page.request.get(base+'/api/vault').json()['effective_routes'];assert {r['provider'] for r in routes.values()}=={'groq'} and {r['model'] for r in routes.values()}=={'llama-3.3-70b-versatile'}
   page.goto(base+'/keyvault');page.get_by_role('button',name='Add key',exact=True).click();page.keyboard.press('Escape');expect(page.get_by_role('dialog',name='Add a key',exact=True)).to_have_count(0)
   conv=post('/conversations',{'title':'Dashboard evidence'})
   page.goto(base+'/discussionroom');expect(page.get_by_role('heading',name='Discussion room',exact=True)).to_be_visible();page.get_by_label('Discussion conversation').select_option(conv['id'])
   page.get_by_role('button',name='Review our growth strategy',exact=False).click();expect(page.get_by_label('Decision or business goal')).to_have_value('Review our growth strategy')
-  page.get_by_role('button',name='Discussion settings',exact=True).click();dialog=page.get_by_role('dialog',name='Discussion settings');expect(dialog).to_be_visible();page.keyboard.press('Escape');expect(dialog).to_have_count(0)
+  page.get_by_role('button',name='Discussion settings',exact=True).click();dialog=page.get_by_role('dialog',name='Discussion settings');expect(dialog).to_be_visible();assert dialog.get_by_label('Discussion model route').locator('option').all_text_contents()==['Workspace models'];page.keyboard.press('Escape');expect(dialog).to_have_count(0)
   page.screenshot(path=str(out/'dashboard-discussion.png'),full_page=True)
   page.get_by_label('Decision or business goal').press('Enter');expect(page.locator('.discussion-thread')).to_contain_text('Controlled specialist response',timeout=30000)
   responses=page.get_by_role('region',name='Specialist responses');expect(responses.locator('.discussion-bubble')).to_have_count(4,timeout=30000);expect(page.locator('.discussion-progress')).to_contain_text('Ready for your decision',timeout=30000)
@@ -60,7 +63,7 @@ try:
    page.set_viewport_size({'width':390,'height':844});page.goto(base+route);page.wait_for_timeout(300);assert page.evaluate('document.documentElement.scrollWidth<=innerWidth'),route+' horizontal overflow'
   page.goto(base+'/discussionroom');composer=page.get_by_label('Decision or business goal');expect(composer).to_be_visible();bounds=composer.bounding_box();assert bounds['y']+bounds['height']<=844,bounds;page.screenshot(path=str(out/'dashboard-discussion-mobile.png'),full_page=True)
   assert not errors,errors
-  print('DASHBOARD PASS: native vault dialogs → encrypted key → real model-list boundary → default/override/reset → discussion prompt/settings/Enter → actual MCP stdio discovery → tools → widget persistence → SQL sales table → monitor pause → mobile. Controlled provider responses; no live-provider claims.',flush=True)
+  print('DASHBOARD PASS: native vault dialogs → automatically verified Gemini/Groq defaults → shared agent routing without model/override controls → discussion prompt/settings/Enter → actual MCP stdio discovery → tools → widget persistence → SQL sales table → monitor pause → mobile. Controlled provider responses; no live-provider claims.',flush=True)
   browser.close()
 finally:
  for p in reversed(processes):

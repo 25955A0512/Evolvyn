@@ -541,7 +541,6 @@ export function IntelligentProductStudio({
               >
                 <Trash2 size={16} /> Trash
               </button>
-              <button onClick={onGuided}>Guided form · no model</button>
             </div>
           </details>
         </div>
@@ -981,10 +980,6 @@ export function IntelligentProductStudio({
                   onChange={(e) => setMode(e.target.value)}
                 >
                   <option value="default">Workspace model</option>
-                  <option value="local">Local model</option>
-                  <option value="gemini">Gemini · vault key</option>
-                  <option value="groq">Groq · vault key</option>
-                  <option value="provider">OpenAI · vault key</option>
                 </select>
               </label>
               <button

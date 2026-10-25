@@ -64,7 +64,7 @@ class Vault:
         self.policy.require(owner, 'manage_vault')
         return [self.metadata(row) for row in self.rows(owner, 'vault_secret')]
 
-    def put(self, owner, body, id=None):
+    def put(self, owner, body, id=None, expected_version=None):
         self.policy.require(owner, 'manage_vault')
         from backend.agent_memory import reject_secrets
         reject_secrets(body.name)
@@ -73,6 +73,7 @@ class Vault:
         id = id or str(uuid4())
         with self.conn() as c:
             prior = c.execute("SELECT body FROM records WHERE owner=%s AND id=%s AND kind='vault_secret' FOR UPDATE", (owner, id)).fetchone()
+            if expected_version is not None and (not prior or (prior['body']['version'],prior['body']['enabled'])!=expected_version):raise HTTPException(409,'The key changed during verification; retry')
             if prior and prior['body']['provider'] != body.provider: raise HTTPException(409, 'A replacement must keep the credential provider')
             data = {'name': body.name, 'provider': body.provider, 'enabled': True, 'version': prior['body']['version'] + 1 if prior else 1, 'updated_at': now()}
             clear = json.dumps({'owner': owner, 'id': id, 'provider': body.provider, 'value': body.value.get_secret_value()}).encode()
@@ -108,13 +109,18 @@ class Vault:
     def effective_routes(self,owner,agents):
         rows = self.bindings(owner)
         default=next((row for row in rows if row['agent']=='default'),None)
-        # A single saved Gemini key is useful immediately, while explicit local,
-        # evidence or per-agent choices remain authoritative. Never cross tenants.
-        if not default:
-            keys=[r for r in self.rows(owner,'vault_secret') if r['body']['enabled'] and r['body']['provider']=='gemini']
-            if len(keys)==1:default={'agent':'default','provider':'gemini','credential_id':keys[0]['id'],'model':'','inferred':True}
-        by_agent={r['agent']:r for r in rows}
-        return {agent:by_agent.get(agent,default) for agent in agents}
+        # One shared cloud route for every agent, including older workspaces.
+        keys=[r for r in self.rows(owner,'vault_secret') if r['body']['enabled'] and r['body']['provider'] in ('gemini','groq')]
+        selected=next((r for r in keys if default and default['provider'] in ('gemini','groq') and r['id']==default.get('credential_id')),None)
+        if default and default['provider'] in ('gemini','groq') and not selected:return {agent:None for agent in agents}
+        selected=selected or (keys[0] if keys else None)
+        if selected:
+            body=selected['body'];provider=body['provider']
+            from backend.cloud_models import SUPPORTED
+            model=body.get('verified_model') or (default.get('model') if default and default.get('credential_id')==selected['id'] and default.get('model') in SUPPORTED[provider] else SUPPORTED[provider][0])
+            default={'agent':'default','provider':provider,'credential_id':selected['id'],'model':model,'inferred':not bool(body.get('verified_model'))}
+            return {agent:default for agent in agents}
+        return {agent:None for agent in agents}
 
     def route(self,owner,agent):return self.effective_routes(owner,[agent])[agent]
 
@@ -149,11 +155,61 @@ def install(app, auth, vault):
         from backend.providers import PROVIDERS
         routes={}
         for agent,route in vault.effective_routes(owner,agents).items():
-            route=route or {'provider':'local','agent':agent}
+            route=route or {'provider':'not_configured','agent':agent}
             config=PROVIDERS.get(route['provider'])
             resolved=(route.get('model') or os.getenv(config['model_env'],config['default_model'])) if config else None
             routes[agent]={**route,'resolved_model':resolved}
         return {'credentials': entries, 'bindings': vault.bindings(owner), 'agents': agents,'effective_routes':routes, 'ready': ready, 'encryption': 'Fernet authenticated encryption; master key outside PostgreSQL'}
+
+    async def validated_key(body,owner,id=None):
+        vault.policy.require(owner,'manage_vault')
+        if body.provider not in ('gemini','groq'):raise HTTPException(422,'Choose Gemini or Groq for an agent key')
+        if not vault.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+        expected_version=None
+        if id:
+            prior=next((r for r in vault.rows(owner,'vault_secret') if r['id']==id),None)
+            if not prior:raise HTTPException(404,'Credential not found')
+            if prior['body']['provider']!=body.provider:raise HTTPException(409,'A replacement must keep its provider')
+            expected_version=(prior['body']['version'],prior['body']['enabled'])
+        from backend.cloud_models import validate
+        from backend.model_errors import ModelFailure
+        try:model=await validate(body.provider,body.value.get_secret_value())
+        except ModelFailure as error:raise HTTPException(error.status_code,str(error)) from None
+        # Recheck administrator authority after the remote validation and reject
+        # a credential changed or revoked while that check was running.
+        from backend.policy import ACTOR,Principal
+        principal=vault.policy.principal(owner)
+        token=ACTOR.set(Principal(owner,principal.account,principal.role))
+        try:
+            vault.policy.require(owner,'manage_vault')
+            saved=vault.put(owner,body,id,expected_version)
+        finally:ACTOR.reset(token)
+        with vault.conn() as c:
+            c.execute("UPDATE records SET body=body || %s::jsonb WHERE owner=%s AND id=%s AND kind='vault_secret'",(json.dumps({'verified_model':model,'verified_at':now()}),owner,saved['id']))
+        vault.bind(owner,'default',BindingInput(provider=body.provider,credential_id=saved['id'],model=model),True)
+        return {**saved,'verified_model':model,'default':True}
+
+    @app.post('/api/vault/model-key')
+    async def save_model_key(body:CredentialInput,owner=Depends(auth)):return await validated_key(body,owner)
+
+    @app.put('/api/vault/model-key/{id}')
+    async def replace_model_key(id:str,body:CredentialInput,owner=Depends(auth)):return await validated_key(body,owner,id)
+
+    @app.post('/api/vault/credentials/{id}/test')
+    async def test_model_key(id:str,owner=Depends(auth)):
+        vault.policy.require(owner,'manage_vault')
+        row=next((r for r in vault.rows(owner,'vault_secret') if r['id']==id and r['body']['enabled']),None)
+        if not row or row['body']['provider'] not in ('gemini','groq'):raise HTTPException(409,'An active Gemini or Groq credential is required')
+        # Version checks prevent testing from reviving a key revoked/replaced mid-request.
+        from backend.cloud_models import validate
+        from backend.model_errors import ModelFailure
+        if not vault.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+        try:model=await validate(row['body']['provider'],vault.reveal_for_service(owner,id,row['body']['provider']))
+        except ModelFailure as error:raise HTTPException(error.status_code,str(error)) from None
+        with vault.conn() as c:
+            updated=c.execute("UPDATE records SET body=body || %s::jsonb WHERE owner=%s AND id=%s AND kind='vault_secret' AND body->>'enabled'='true' AND (body->>'version')::int=%s RETURNING id",(json.dumps({'verified_model':model,'verified_at':now()}),owner,id,row['body']['version'])).fetchone()
+            if not updated:raise HTTPException(409,'The key changed during testing; retry')
+        return {'available':True,'model':model}
 
     @app.post('/api/vault/credentials/{id}/models')
     async def discover_models(id:str,owner=Depends(auth)):

@@ -163,7 +163,10 @@ class ProductAgents:
         for node in definition.nodes:
             if node.type=='agent':
                 with model_scope(owner,node.agent_id):
-                    if effective_mode(node.mode)=='evidence':raise HTTPException(422,'Product agents need a real model route. Configure Key vault, choose Local model, or use the explicitly offline guided form.')
+                    from backend.model_errors import ModelFailure
+                    try:selected=effective_mode(node.mode)
+                    except ModelFailure:raise HTTPException(422,'Product agents need a saved Gemini or Groq key in Key vault.') from None
+                    if selected=='evidence':raise HTTPException(422,'Product agents need a saved Gemini or Groq key in Key vault.')
         graph=self.s['save'](owner,'agent_graph',definition.model_dump())
         run=await self.s['GRAPH_HARNESS'].start(owner,graph['id'],conversation['id'])
         key='last_interview_run' if any(n.id=='interview' for n in definition.nodes) else 'last_build_run'

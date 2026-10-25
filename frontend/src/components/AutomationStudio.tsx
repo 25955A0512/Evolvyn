@@ -190,7 +190,7 @@ export function AutomationStudio({
                   body: JSON.stringify({
                     conversation_id: conversation,
                     query: d.query,
-                    mode: d.mode,
+                    mode: "default",
                     interval_minutes: Number(d.interval_minutes),
                     allow_fallback: false,
                   }),
@@ -202,7 +202,7 @@ export function AutomationStudio({
                     name: d.name,
                     conversation_id: conversation,
                     query: d.query,
-                    mode: d.mode,
+                    mode: "default",
                     condition:
                       kind === "condition"
                         ? { metric: d.metric, op: d.op, value: d.value }
@@ -262,13 +262,7 @@ export function AutomationStudio({
           <label>
             Model route
             <select name="mode" defaultValue="default">
-              <option value="default">
-                Workspace vault / per-agent routes
-              </option>
-              <option value="local">Local model</option>
-              <option value="evidence">
-                Explicit evidence calculations (no AI)
-              </option>
+              <option value="default">Workspace keys</option>
             </select>
           </label>
           {kind === "schedule" ? (

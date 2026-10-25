@@ -32,22 +32,27 @@ def test_saved_gemini_key_defaults_all_roles_and_explicit_selection(c):
             assert key_for('gemini',PROVIDERS['gemini'])==key
     c.put('/api/vault/bindings/reviewer',json={'provider':'evidence'}).raise_for_status()
     with model_scope(c.org,'reviewer'):
-        assert effective_mode('default')=='evidence'
+        assert effective_mode('default')=='gemini'
         assert key_for('gemini',PROVIDERS['gemini'])==key
     c.put('/api/vault/bindings/default',json={'provider':'gemini','credential_id':row['id'],'model':'gemini-2.5-flash-lite'}).raise_for_status()
     c.put('/api/vault/workspace-default',json={'provider':'gemini','credential_id':row['id'],'reset_agent_overrides':True}).raise_for_status()
     assert next(r for r in c.get('/api/vault').json()['bindings'] if r['agent']=='default')['model']=='gemini-2.5-flash-lite'
     assert set(r['provider'] for r in c.get('/api/vault').json()['effective_routes'].values())=={'gemini'}
-    with model_scope('another-organization','supervisor'):assert effective_mode('default')=='local' and key_for('gemini',PROVIDERS['gemini'])!=key
+    from backend.model_errors import ModelFailure
+    with model_scope('another-organization','supervisor'):
+        with pytest.raises(ModelFailure):effective_mode('default')
+        assert key_for('gemini',PROVIDERS['gemini'])!=key
     assert key not in c.get('/api/vault').text
 
-def test_default_selection_never_guesses_between_multiple_keys(c):
-    first,key=save_key(c);save_key(c)
+def test_latest_saved_key_is_inferred_until_an_explicit_cloud_default_exists(c):
+    first,key=save_key(c);second,new_key=save_key(c)
     with model_scope(c.org,'architect'):
-        assert effective_mode('default')=='local'
-        with pytest.raises(Exception):key_for('gemini',PROVIDERS['gemini'])
+        assert effective_mode('default')=='gemini'
+        assert key_for('gemini',PROVIDERS['gemini'])==new_key
     c.put('/api/vault/workspace-default',json={'provider':'gemini','credential_id':first['id']}).raise_for_status()
-    with model_scope(c.org,'architect'):assert effective_mode('default')=='gemini'
+    with model_scope(c.org,'architect'):
+        assert effective_mode('default')=='gemini'
+        assert key_for('gemini',PROVIDERS['gemini'])==key
 
 def configure_github(monkeypatch):
     monkeypatch.setenv('OAUTH_GITHUB_CLIENT_ID','synthetic-oauth-client')

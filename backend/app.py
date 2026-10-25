@@ -795,10 +795,12 @@ async def provider_list(owner=Depends(auth)):
     from backend.providers import PROVIDERS
     entries=[]
     for id,config in PROVIDERS.items():
+        if id not in ('gemini','groq'):continue
         with model_access.model_scope(owner,'business_analyst'):
             try:configured=not config['key'] or bool(model_access.key_for(id,config))
             except HTTPException:configured=False
-        entry={'id':id,'name':config['name'],'model':os.getenv(config['model_env'],config['default_model']),'requires_api_key':bool(config['key']),'configured':configured}
+            resolved_model=model_access.model_for(id,config)
+        entry={'id':id,'name':config['name'],'model':resolved_model,'requires_api_key':bool(config['key']),'configured':configured}
         if id=='local':
             try:
                 async with httpx.AsyncClient(timeout=2,trust_env=False) as client:
@@ -818,7 +820,8 @@ async def check_selected_provider(provider:str,owner=Depends(auth)):
     try:
         text=''
         async with asyncio.timeout(30):
-            async for chunk in response_chunks(report,'Reply with a brief greeting.',[],provider):text+=chunk
+            with model_access.model_scope(owner,'supervisor'):
+                async for chunk in response_chunks(report,'Reply with a brief greeting.',[],provider):text+=chunk
         if text.startswith('Deterministic evidence mode'):return {'available':False,'reason':'missing_provider_credential'}
         return {'available':bool(text),'reason':'responded','usage':report.get('usage')}
     except Exception:return {'available':False,'reason':'Provider unavailable; check the model service or optional credentials'}
@@ -1034,3 +1037,10 @@ INSTAGRAM_OAUTH.install(app,auth)
 from backend.business_connectors import BusinessConnectors
 BUSINESS_CONNECTORS=BusinessConnectors({name:globals()[name] for name in ('get','save','listing','conn','POLICY','VAULT','MCP_REGISTRY')})
 BUSINESS_CONNECTORS.install(app,auth)
+
+# Model setup failures can occur at queue admission as well as in workers.
+from backend.model_errors import ModelFailure
+@app.exception_handler(ModelFailure)
+async def model_configuration_error(request,exc):
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=503 if exc.code=='model_not_configured' else exc.status_code,content={'detail':str(exc),'error_code':exc.code})

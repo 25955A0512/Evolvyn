@@ -1,7 +1,5 @@
 """File-free LLM conversations using the existing durable worker and model boundaries."""
 import asyncio,json
-from backend.providers import ProviderNotConfigured
-from backend.platform_help import routes,answer
 
 class AssistantChat:
     def __init__(self,services):self.s=services
@@ -17,16 +15,11 @@ class AssistantChat:
                 events.append({'stage':'respond','detail':'Requesting a real LLM reply; no business-data upload is required for conversation'})
                 s['change_execution'](owner,id,{'events':events})
                 if run.get('mode')=='evidence':raise ValueError('Chat needs a language model')
-                if run.get('mode')=='default' and any(r['configured'] for r in routes()):
-                    s['POLICY'].data(owner,conversation,'gemini')
-                    history=[{'role':m['role'],'content':m['text']} for m in conversation['messages'][:-2] if m.get('channel')=='assistant_chat'][-8:]
-                    result=await answer(run['question'],history)
-                else:
-                    from backend.model_access import model_scope,effective_mode
-                    with model_scope(owner,'supervisor'):
-                        if effective_mode(run.get('mode','default'))=='evidence':raise ValueError('Conversational mode requires a real model')
-                    history=[{'role':m['role'],'text':m['text'][:1500]} for m in conversation['messages'][:-2] if m.get('channel')=='assistant_chat'][-6:]
-                    result=await s['AGENTS'].respond(owner,'supervisor',conversation,{'facts':[],'evidence':[]},'You are the Evolvyn conversational assistant. Answer the current message naturally, including greetings and platform questions. Do not demand a sales file for general chat. No business measurements or tool actions are established. User message: '+run['question'],{'conversation':{'text':json.dumps(history)}},run.get('mode','default'),False)
+                from backend.model_access import model_scope,effective_mode
+                with model_scope(owner,'supervisor'):
+                    if effective_mode(run.get('mode','default'))=='evidence':raise ValueError('Conversational mode requires a real model')
+                history=[{'role':m['role'],'text':m['text'][:1500]} for m in conversation['messages'][:-2] if m.get('channel')=='assistant_chat'][-6:]
+                result=await s['AGENTS'].respond(owner,'supervisor',conversation,{'facts':[],'evidence':[]},'You are the Evolvyn conversational assistant. Answer the current message naturally, including greetings and platform questions. Do not demand a sales file for general chat. No business measurements or tool actions are established. User message: '+run['question'],{'conversation':{'text':json.dumps(history)}},run.get('mode','default'),False)
                 text=result['text']
                 events.append({'stage':'completed','detail':'Model reply received and saved; no business action executed'})
                 if s['change_execution'](owner,id,{'state':'COMPLETED','output':text,'events':events,'chat_result':{k:v for k,v in result.items() if k!='text'}}):s['finish_message'](owner,run['conversation'],id,text)

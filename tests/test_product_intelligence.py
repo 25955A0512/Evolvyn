@@ -167,7 +167,7 @@ def test_product_agents_reject_evidence_only_route_without_fake_reply(client):
     client.put('/api/vault/bindings/default',json={'provider':'evidence'}).raise_for_status()
     p=product(client)
     response=client.post('/api/studio/products/'+p['id']+'/messages',json={'spec_id':p['id'],'revision':p['revision'],'text':'Hello, help with the product','mode':'default'})
-    assert response.status_code==422 and 'real model' in response.text
+    assert response.status_code==422 and 'Gemini or Groq' in response.text
     assert client.get('/api/studio/products/'+p['id']+'/agent-history').json()==[]
 
 def test_product_agent_endpoints_do_not_leak_other_organizations(client):
@@ -244,7 +244,7 @@ def test_confirmed_plan_survives_launch_configuration_failure(client,planner):
     result=client.post(base+'/proposals/'+plan['id']+'/confirm-and-build',json={'spec_id':p['id'],'revision':1,'mode':'default'})
     assert result.status_code==202,result.text
     assert result.json()['product']['ready'] and not result.json()['execution']
-    assert 'real model route' in result.json()['launch_error']
+    assert 'Gemini or Groq' in result.json()['launch_error']
     assert client.get(base).json()['revision']==2
 
 def test_confirm_plan_checks_product_scope_before_mutation(client,planner):

@@ -16,7 +16,7 @@ async def completion(messages,model,credential,limit=700,json_output=False,max_c
     url='https://generativelanguage.googleapis.com/v1beta/models/'+quote(model.removeprefix('models/'),safe='')+':generateContent'
     async with httpx.AsyncClient(timeout=httpx.Timeout(40,connect=8),follow_redirects=False) as client:
         async with client.stream('POST',url,headers={'x-goog-api-key':credential},json=body) as response:
-            if response.status_code==404:raise ModelFailure('provider_model_unavailable','The configured Gemini model is unavailable for this key/API. In Key vault, load available models, select one, apply it to all agents and test the route. Replacing a key alone does not update the selected model.')
+            if response.status_code==404:raise ModelFailure('provider_model_unavailable','The Gemini model is unavailable for this key. Open Key vault and test or replace the key to refresh its supported model automatically.')
             response.raise_for_status();chunks=[];size=0
             async for chunk in response.aiter_bytes():
                 size+=len(chunk)
@@ -61,6 +61,8 @@ async def available_models(credential):
                     if not isinstance(name,str) or not name.startswith('models/'):continue
                     id=name.removeprefix('models/')
                     if not re.fullmatch(r'[A-Za-z0-9_.-]{1,150}',id) or credential in json.dumps(row):raise ValueError('Invalid model metadata')
+                    from backend.cloud_models import SUPPORTED
+                    if id not in SUPPORTED['gemini']:continue
                     rows[id]={'id':id,'display_name':str(row.get('displayName',id))[:150]}
                 page=result.get('nextPageToken')
                 if not page:break
@@ -70,4 +72,4 @@ async def available_models(credential):
         code,message=failure(error)
         if code in ('execution_failed','provider_model_unavailable'):code,message='model_discovery_failed','Gemini model discovery failed. Verify API access for this key and retry; no route was changed.'
         raise ModelFailure(code,message) from None
-    return {'models':sorted(rows.values(),key=lambda r:r['id']),'truncated':bool(page),'classification':'Provider-listed generateContent models; listing does not prove successful generation or available quota.'}
+    return {'models':sorted(rows.values(),key=lambda r:r['id']),'truncated':bool(page),'classification':'Platform-supported Gemini text/JSON models; listing does not prove successful generation or available quota.'}

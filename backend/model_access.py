@@ -32,7 +32,11 @@ def binding():
 def effective_mode(mode):
     if mode != 'default': return mode
     route = binding()
-    return route['provider'] if route else 'local'
+    if route:return route['provider']
+    if VAULT and SCOPE.get():
+        from backend.model_errors import ModelFailure
+        raise ModelFailure('model_not_configured','Save and verify a Gemini or Groq key in Key vault. All agents use that workspace key automatically.')
+    return 'local'
 
 def key_for(mode, config):
     route = binding()

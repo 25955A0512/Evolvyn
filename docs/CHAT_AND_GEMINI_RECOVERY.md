@@ -1,3 +1,5 @@
+> Model setup below is historical. The current Gemini/Groq-only automatic key workflow is documented in [CLOUD_MODEL_DEFAULTS.md](CLOUD_MODEL_DEFAULTS.md).
+
 # Product chat keyboard, queue feedback and model recovery
 
 The reported Product Studio screenshot showed a saved provider failure, not a completed model response. A valid replacement credential does not change an explicit model identifier, environment default or per-agent override. The workspace cannot determine live account/model access from a screenshot and must not silently swap keys/providers/models.

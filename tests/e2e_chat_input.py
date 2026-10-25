@@ -35,7 +35,7 @@ try:
   for width,height in [(1440,800),(1280,600),(1024,650),(390,844)]:
    page.set_viewport_size({'width':width,'height':height});composer_visible()
   page.set_viewport_size({'width':1280,'height':650})
-  expect(page.locator('.studio-sidebar nav>button')).to_have_count(4)
+  expect(page.locator('.studio-sidebar nav>button')).to_have_count(3)
   page.locator('.studio-advanced-nav>summary').click();expect(page.locator('.studio-sidebar').get_by_role('button',name='Key vault',exact=True)).to_be_visible();page.locator('.studio-advanced-nav>summary').click()
   page.get_by_role('button',name='Hide studio navigation',exact=True).click();expect(page.locator('.studio-sidebar')).to_be_hidden();composer_visible()
   page.reload();expect(page.get_by_role('button',name='Show studio navigation',exact=True)).to_be_visible();composer_visible()
@@ -44,12 +44,9 @@ try:
   expect(menu.get_by_role('button',name='Add connector',exact=False)).to_be_visible();expect(menu.get_by_label('Search connections and tools')).to_be_visible()
   bounds=menu.bounding_box();assert bounds['y']>=0 and bounds['y']+bounds['height']<=650,bounds
   page.screenshot(path=str(out/'studio-connector-menu.png'));studio.locator('.tool-access>summary').click()
-  # Select a model returned by the controlled provider; the actual vault/route is persisted.
-  page.request.post(base+'/api/vault/credentials',data={'name':'Synthetic Gemini chat key','provider':'gemini','value':'synthetic-chat-key-'+uuid4().hex},headers={'X-Requested-With':'Evolvyn'})
-  page.goto(base+'/keyvault');page.get_by_role('button',name='Load available models',exact=True).click()
-  page.get_by_label('Available Gemini model: Synthetic Gemini chat key',exact=True).select_option('synthetic-visible-model')
-  page.get_by_role('button',name='Use for all agents',exact=True).click();expect(page.get_by_role('status')).to_contain_text('All agents now inherit this key')
-  data=page.request.get(base+'/api/vault').json();assert all(r['resolved_model']=='synthetic-visible-model' for r in data['effective_routes'].values())
+  # A verified cloud key becomes the shared default without a model picker.
+  r=page.request.post(base+'/api/vault/model-key',data={'name':'Synthetic Gemini chat key','provider':'gemini','value':'synthetic-chat-key-'+uuid4().hex},headers={'X-Requested-With':'Evolvyn'});assert r.ok,r.status
+  data=page.request.get(base+'/api/vault').json();assert all(r['resolved_model']=='gemini-2.5-flash-lite' for r in data['effective_routes'].values())
   page.goto(base+'/product-studio');composer=studio.get_by_label('Message product agents',exact=True)
   expect(studio.get_by_role('heading',name='What would you like to build?',exact=True)).to_be_visible()
   expect(studio.get_by_role('button',name='Send to product agents')).to_be_disabled()
@@ -84,7 +81,7 @@ try:
    page.set_viewport_size({'width':width,'height':height});composer_visible();assert page.evaluate('document.documentElement.scrollWidth<=innerWidth')
   page.screenshot(path=str(out/'chat-enter-and-route.png'))
   assert not errors,errors
-  print('CHAT INPUT PASS: provider-listed model selection → actual vault/default route persistence → Shift+Enter newline → Enter sends once → immediate pending message under delayed queue → controlled LLM chat → navigation/history restoration → failed-request draft recovery → desktop/mobile. No live Gemini acceptance claimed.',flush=True)
+  print('CHAT INPUT PASS: automatically verified workspace key → actual vault/default route persistence → Shift+Enter newline → Enter sends once → immediate pending message under delayed queue → controlled LLM chat → navigation/history restoration → failed-request draft recovery → desktop/mobile. No live Gemini acceptance claimed.',flush=True)
   browser.close()
 finally:
  for process in reversed(processes):

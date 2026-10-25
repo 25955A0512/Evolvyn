@@ -16,15 +16,15 @@ def test_inventory_then_explicit_default_drives_real_product_workflow(c,monkeypa
     def handler(request):
         assert request.headers['x-goog-api-key']==key and key not in str(request.url)
         seen.append((request.method,request.url.path))
-        if request.method=='GET':return httpx.Response(200,json={'models':[{'name':'models/synthetic-current-model','displayName':'Synthetic current model','supportedGenerationMethods':['generateContent']},{'name':'models/synthetic-embedding','supportedGenerationMethods':['embedContent']}]})
-        assert request.url.path.endswith('/synthetic-current-model:generateContent')
+        if request.method=='GET':return httpx.Response(200,json={'models':[{'name':'models/gemini-2.5-flash-lite','displayName':'Synthetic current model','supportedGenerationMethods':['generateContent']},{'name':'models/synthetic-embedding','supportedGenerationMethods':['embedContent']}]})
+        assert request.url.path.endswith('/gemini-2.5-flash-lite:generateContent')
         return httpx.Response(200,json={'candidates':[{'content':{'parts':[{'text':json.dumps({'reply':'Synthetic provider reply: who will use this store?','proposed_requirements':{}})}]},'finishReason':'STOP'}]})
     boundary(monkeypatch,handler)
     result=c.post('/api/vault/credentials/'+row['id']+'/models');result.raise_for_status()
-    assert result.json()['models']==[{'id':'synthetic-current-model','display_name':'Synthetic current model'}]
+    assert result.json()['models']==[{'id':'gemini-2.5-flash-lite','display_name':'Synthetic current model'}]
     assert key not in result.text
-    c.put('/api/vault/workspace-default',json={'provider':'gemini','credential_id':row['id'],'model':'synthetic-current-model','reset_agent_overrides':True}).raise_for_status()
-    routes=c.get('/api/vault').json()['effective_routes'];assert all(r['resolved_model']=='synthetic-current-model' for r in routes.values())
+    c.put('/api/vault/workspace-default',json={'provider':'gemini','credential_id':row['id'],'model':'gemini-2.5-flash-lite','reset_agent_overrides':True}).raise_for_status()
+    routes=c.get('/api/vault').json()['effective_routes'];assert all(r['resolved_model']=='gemini-2.5-flash-lite' for r in routes.values())
     product=c.post('/api/studio/products',json={'name':'Synthetic store','goal':'Sell products in an online store'}).json()
     run=c.post('/api/studio/products/'+product['id']+'/messages',json={'spec_id':product['id'],'revision':product['revision'],'text':'Who should we build this for?','mode':'default','intent':'chat'});run.raise_for_status()
     c.get('/api/executions/'+run.json()['id']+'/live')
@@ -63,5 +63,5 @@ def test_unavailable_model_is_actionable_and_never_switches(c,monkeypatch):
     boundary(monkeypatch,handler)
     c.put('/api/vault/workspace-default',json={'provider':'gemini','credential_id':row['id'],'model':'retired-synthetic-model'}).raise_for_status()
     result=c.post('/api/agents/product_manager/test').json()
-    assert not result['available'] and result['error_code']=='provider_model_unavailable' and 'load available models' in result['reason']
+    assert not result['available'] and result['error_code']=='provider_model_unavailable' and 'test or replace' in result['reason']
     assert len(calls)==1 and key not in json.dumps(result)
