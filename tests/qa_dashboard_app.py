@@ -7,5 +7,5 @@ original=httpx.AsyncClient
 async def provider(request):
     assert request.url.host=='generativelanguage.googleapis.com'
     if request.method=='GET':return httpx.Response(200,json={'models':[{'name':'models/synthetic-visible-model','supportedGenerationMethods':['generateContent']}]})
-    return httpx.Response(200,json={'candidates':[{'content':{'parts':[{'text':'Controlled specialist response. Validate the supplied evidence before changing the plan.'}]},'finishReason':'STOP'}]})
+    return httpx.Response(200,json={'candidates':[{'content':{'parts':[{'text':'Controlled specialist response. Validate the supplied evidence before changing the plan.' + '\n\n' + '\n\n'.join('Synthetic detail '+str(i)+': this paragraph exercises reading and scrolling of a long specialist answer. No live account was accessed.' for i in range(12))}]},'finishReason':'STOP'}]})
 gemini_gateway.httpx=SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(provider),**kw),Timeout=httpx.Timeout)

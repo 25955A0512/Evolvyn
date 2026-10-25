@@ -975,3 +975,105 @@
   background: white;
   border-top: 1px solid #e6eae5;
 }
+/* Give answers the available height, and keep progress/approval from hiding them. */
+.agent-workspace .discussion-thread {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
+  overscroll-behavior: contain;
+  scroll-padding-top: 12px;
+}
+.discussion-reader-controls {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  padding: 4px 0 10px;
+  font-size: 12px;
+  color: #506655;
+}
+.discussion-reader-controls > span {
+  margin-right: auto;
+}
+.discussion-reader-controls button {
+  border: 1px solid #dce5d8;
+  border-radius: 8px;
+  background: white;
+  color: #285d48;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+.discussion-reader-controls button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.discussion-handoffs {
+  margin: 10px 0;
+  font-size: 12px;
+}
+.discussion-handoffs summary {
+  cursor: pointer;
+  color: #526b56;
+}
+.discussion-handoffs .agent-graph {
+  margin-top: 10px;
+}
+.agent-workspace .discussion-chat .discussion-bubble {
+  overflow-wrap: anywhere;
+}
+.agent-workspace .discussion-chat .discussion-bubble p,
+.agent-workspace .discussion-chat .discussion-bubble li {
+  color: #354d3e;
+  font-size: 15px;
+  line-height: 1.7;
+}
+.discussion-bubble pre,
+.discussion-bubble table {
+  max-width: 100%;
+  overflow: auto;
+}
+.discussion-bubble table {
+  display: block;
+}
+@media (max-height: 750px) {
+  .agent-workspace .discussion-chat {
+    padding-top: 12px;
+  }
+  .agent-workspace .discussion-chat-heading {
+    margin-bottom: 10px;
+  }
+  .agent-workspace .discussion-chat-heading p {
+    display: none;
+  }
+  .agent-workspace .discussion-chat-context {
+    margin-bottom: 6px;
+  }
+  .agent-workspace .discussion-composer {
+    padding: 10px 14px;
+    margin-top: 8px;
+  }
+  .agent-workspace .discussion-composer > textarea {
+    min-height: 40px;
+  }
+}
+/* Fit the actual studio space, including mobile navigation, rather than 100vh. */
+.agent-workspace .studio-scroll:has(> .discussion-chat) {
+  display: flex;
+  overflow: hidden;
+}
+.agent-workspace .studio-scroll > .discussion-chat {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+}
+@media (max-width: 650px) {
+  .agent-workspace .discussion-chat-heading p,
+  .discussion-reader-controls > span {
+    display: none;
+  }
+  .discussion-reader-controls {
+    flex-wrap: nowrap;
+  }
+}

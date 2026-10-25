@@ -45,7 +45,10 @@ export function DiscussionRoom({
     [error, setError] = useState(""),
     [settings, setSettings] = useState(false);
   const controller = useRef<AbortController | null>(null),
-    bottom = useRef<HTMLDivElement>(null);
+    thread = useRef<HTMLDivElement>(null),
+    firstReply = useRef<HTMLElement>(null),
+    review = useRef<HTMLFormElement>(null),
+    shownReply = useRef("");
   async function load() {
     const [a, b] = await Promise.all([
       api.json("/conversations"),
@@ -58,9 +61,6 @@ export function DiscussionRoom({
     load().catch((e) => setError(e.message));
     return () => controller.current?.abort();
   }, []);
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [active?.events?.length, active?.state]);
   function follow(id: string) {
     controller.current?.abort();
     controller.current = new AbortController();
@@ -100,6 +100,27 @@ export function DiscussionRoom({
         ([k, v]) => [k.split(":")[0], v],
       ),
     );
+  const outputCount = Object.keys(outputs).length;
+  function showInThread(element: HTMLElement | null) {
+    const container = thread.current;
+    if (container && element)
+      container.scrollTo({
+        top:
+          container.scrollTop +
+          element.getBoundingClientRect().top -
+          container.getBoundingClientRect().top -
+          12,
+        behavior: "instant",
+      });
+  }
+  useEffect(() => {
+    // Open the first actual answer once; do not jump past replies to the
+    // approval form, or move the reader on every streamed progress event.
+    if (outputCount && active?.id !== shownReply.current) {
+      showInThread(firstReply.current);
+      shownReply.current = active.id;
+    } else if (!outputCount) shownReply.current = "";
+  }, [active?.id, outputCount]);
   const running = ["CREATED", "RUNNING"].includes(active?.state);
   async function createConversation() {
     const c = await api.json("/conversations", {
@@ -286,7 +307,37 @@ export function DiscussionRoom({
             ))}
         </details>
       )}
-      <div className="discussion-thread" aria-live="polite">
+      {active && (
+        <div className="discussion-reader-controls">
+          <span>
+            {outputCount
+              ? `${outputCount} specialist responses`
+              : running
+                ? "Your team is working…"
+                : "Discussion status"}
+          </span>
+          <button
+            type="button"
+            disabled={!outputCount}
+            onClick={() => showInThread(firstReply.current)}
+          >
+            View responses
+          </button>
+          {active.state === "WAITING_FOR_APPROVAL" && (
+            <button type="button" onClick={() => showInThread(review.current)}>
+              Review decision
+            </button>
+          )}
+        </div>
+      )}
+      <div
+        ref={thread}
+        className="discussion-thread"
+        role="region"
+        aria-label="Specialist responses"
+        aria-live="polite"
+        tabIndex={0}
+      >
         {!active ? (
           <div className="discussion-intro">
             <div className="discussion-orb" aria-hidden="true">
@@ -347,22 +398,25 @@ export function DiscussionRoom({
                 </button>
               )}
             </div>
-            <div
-              className="agent-graph compact-agent-graph"
-              aria-label="Specialist handoffs"
-            >
-              {[
-                "business_analyst",
-                "marketing_analyst",
-                "product_manager",
-                "reviewer",
-              ].map((a, i) => (
-                <span className={outputs[a] ? "complete" : ""} key={a}>
-                  {outputs[a] ? <Check size={14} /> : i + 1}
-                  {a.replaceAll("_", " ")}
-                </span>
-              ))}
-            </div>
+            <details className="discussion-handoffs">
+              <summary>Team progress</summary>
+              <div
+                className="agent-graph compact-agent-graph"
+                aria-label="Specialist handoffs"
+              >
+                {[
+                  "business_analyst",
+                  "marketing_analyst",
+                  "product_manager",
+                  "reviewer",
+                ].map((a, i) => (
+                  <span className={outputs[a] ? "complete" : ""} key={a}>
+                    {outputs[a] ? <Check size={14} /> : i + 1}
+                    {a.replaceAll("_", " ")}
+                  </span>
+                ))}
+              </div>
+            </details>
             {Object.entries(outputs)
               .sort(
                 ([a], [b]) =>
@@ -379,8 +433,9 @@ export function DiscussionRoom({
                     "reviewer",
                   ].indexOf(b),
               )
-              .map(([agent, result]: [string, any]) => (
+              .map(([agent, result]: [string, any], index) => (
                 <article
+                  ref={index === 0 ? firstReply : undefined}
                   className="specialist-output discussion-bubble"
                   key={agent}
                 >
@@ -409,6 +464,7 @@ export function DiscussionRoom({
             )}
             {active.state === "WAITING_FOR_APPROVAL" && (
               <form
+                ref={review}
                 className="discussion-decision"
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -493,7 +549,6 @@ export function DiscussionRoom({
             )}
           </>
         )}
-        <div ref={bottom} />
       </div>
       <form
         className="discussion-composer"
