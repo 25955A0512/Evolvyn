@@ -221,4 +221,4 @@ A single saved, unassigned Gemini key is selected as the workspace default. To r
 
 Public AWS deployment and OAuth: see [the step-by-step EC2/ALB guide](docs/AWS_FIRST_DEPLOYMENT.md). Register real Google/GitHub applications, then use `python scripts/configure_oauth.py` privately on the server. The guide is a single-instance starting point; it does not claim AWS provisioning or production certification.
 
-For the Vercel + Render deployment, follow [VERCEL_RENDER_DEPLOYMENT.md](docs/VERCEL_RENDER_DEPLOYMENT.md). Import `frontend` into Vercel and `render.yaml` into Render, then configure the API rewrite using the actual assigned URLs. The default frontend intentionally has no unverified API destination.
+For the Vercel + Render deployment, follow [VERCEL_RENDER_DEPLOYMENT.md](docs/VERCEL_RENDER_DEPLOYMENT.md). Import `frontend` into Vercel and `render.yaml` into Render, then configure the API rewrite using the actual assigned URLs. The current frontend proxy targets the operator-provided `https://evolvyn.onrender.com`; reconfigure it before deploying a separate copy.

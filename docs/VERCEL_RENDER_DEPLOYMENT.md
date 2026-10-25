@@ -1,5 +1,7 @@
 # Vercel + Render deployment
 
+Current operator-provided origins are **https://evolvyn.vercel.app** (frontend) and **https://evolvyn.onrender.com** (API). The checked-in API rewrite targets that Render origin. Public health, cookies and OAuth must still be verified through the actual deployments; workspace outbound connectivity could not reach either site. Reconfigure the rewrite before deploying a separate copy.
+
 The repository includes a Vercel SPA configuration and `render.yaml` Blueprint for an always-on API, managed PostgreSQL and a private source compiler. These are deployment inputs, not proof that cloud resources exist. This session has no Vercel/Render deployment tokens. The operator must import the repository through the already connected dashboards and supply the public service URLs.
 
 ## Actual layout and limits
@@ -22,7 +24,7 @@ Review current Render plans/prices and the selected region before clicking Creat
 2. Set **Root Directory: `frontend`** and framework **Vite**. `frontend/vercel.json` sets the locked install command, build command and `dist` output.
 3. Deploy and copy the stable **production project URL**, e.g. `https://your-project.vercel.app`.
 
-This is a bootstrap deployment only: the default config intentionally has **no API destination** and does not forward cookies/data to an invented or unclaimed Render service. `/api/*` is excluded from the SPA fallback and will fail until step 3. Do not share this initial frontend as a working platform. Do not add AI/OAuth/database/vault credentials to Vercel frontend environment variables. No frontend environment variables are needed for API routing.
+For a separate deployment, connect the frontend to your own Render API using step 3 before entering credentials or sharing it as a working platform. `/api/*` is excluded from the SPA fallback; when no proxy rule is configured it fails rather than returning the SPA as an API result. Do not add AI/OAuth/database/vault credentials to Vercel frontend environment variables. No frontend environment variables are needed for API routing.
 
 ## 2. Deploy the Render Blueprint
 
