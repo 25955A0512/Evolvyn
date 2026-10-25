@@ -157,3 +157,36 @@ def test_generated_compose_cannot_mount_private_host_paths(volume):
  import yaml
  files=dict(FILES);files['compose.yaml']=yaml.safe_dump({'services':{'app':{'build':'.','volumes':[volume]},'db':{'image':'postgres:17'}}})
  with pytest.raises(ValueError):validate_source(files)
+
+@pytest.mark.parametrize('stack',['react_fastapi','react_express'])
+def test_stack_manifest_entry_points_are_allowed(stack):
+ from backend.model_source import Manifest
+ paths=['frontend/src/main.jsx','frontend/index.html','frontend/package.json','Dockerfile','compose.yaml']
+ paths+=['backend/server.mjs','backend/package.json'] if stack=='react_express' else ['backend/app.py','backend/requirements.txt']
+ assert len(Manifest(files=[{'path':p,'purpose':'Entry point'} for p in paths]).files)==7
+
+@pytest.mark.parametrize('recover',[True,False])
+def test_manifest_has_one_bounded_correction_before_file_generation(client,models,monkeypatch,recover):
+ original=ModelSourceBuilder.__init__;manifest_calls=[]
+ def init(self,s):
+  original(self,s)
+  async def stream(report,prompt,history,mode):
+   if 'PRODUCT_SOURCE_MANIFEST_JSON' in prompt:
+    manifest_calls.append(prompt)
+    if len(manifest_calls)==1 or not recover:
+     yield json.dumps({'files':[{'path':'../escape.py','purpose':'Unsafe'}]})
+    else:yield json.dumps({'files':[{'path':p,'purpose':'Test entry'} for p in FILES]})
+   else:yield next(content for path,content in FILES.items() if 'contents of '+path+' only' in prompt)
+  self.stream=stream
+ monkeypatch.setattr(ModelSourceBuilder,'__init__',init)
+ monkeypatch.delenv('EVOLVYN_COMPILER_URL',raising=False)
+ _,run=approved_model_build(client)
+ build=client.get('/api/studio/builds').json()[0]
+ assert len(manifest_calls)==2
+ assert len([e for e in build['events'] if e['stage']=='manifest_retry'])==1
+ if recover:
+  assert run['state']=='COMPLETED' and build['files']==FILES
+ else:
+  assert run['state']=='FAILED' and build['files']=={}
+  assert build['error_code']=='source_contract_invalid'
+  assert 'after one correction attempt' in build['error']

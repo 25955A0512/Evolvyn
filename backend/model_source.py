@@ -31,7 +31,7 @@ def safe_path(path):
     p=PurePosixPath(path)
     if not re.fullmatch(r'[A-Za-z0-9_.\-/]+',path) or p.is_absolute() or any(part in ('..','.') for part in path.split('/')) or str(p)!=path or path.endswith('/') or len(p.parts)>8:raise ValueError('Unsafe source path')
     if p.name in ('package-lock.json','yarn.lock','pnpm-lock.yaml'):raise ValueError('Dependency locks must be produced by the package manager, never invented by a model')
-    if p.suffix not in ('.jsx','.tsx','.js','.ts','.json','.css','.html','.py','.txt','.md','.yaml','.yml','.toml','.sql','.example') and p.name not in ('Dockerfile','.gitignore','.dockerignore'):raise ValueError('Unsupported source file type')
+    if p.suffix not in ('.jsx','.tsx','.js','.mjs','.ts','.json','.css','.html','.py','.txt','.md','.yaml','.yml','.toml','.sql','.example') and p.name not in ('Dockerfile','.gitignore','.dockerignore'):raise ValueError('Unsupported source file type')
     return path
 
 def unfenced(text):
@@ -101,9 +101,18 @@ class ModelSourceBuilder:
                 return result
         try:
             from backend.product_agents import response_schema
-            manifest=Manifest.model_validate_json(await ask('PRODUCT_SOURCE_MANIFEST_JSON. Plan the smallest complete source repository for the confirmed product. Return compact JSON with files [{path,purpose}]. Choose useful names and folders for THIS product; no template inventory. Include frontend/src/main.jsx, frontend/index.html, frontend/package.json, Dockerfile, compose.yaml, and '+('backend/app.py, backend/requirements.txt' if spec['requirements']['stack']=='react_fastapi' else 'backend/server.mjs, backend/package.json')+'. Include all imported frontend components and styles as separate files if useful. React frontend dependencies may only use react, react-dom, lucide-react. No lockfiles, binary assets, embedded copies of Evolvyn or invented credentials. At most 16 concise files.',2048,response_schema(Manifest)))
             required={'frontend/src/main.jsx','frontend/index.html','frontend/package.json','Dockerfile','compose.yaml'}|({'backend/app.py','backend/requirements.txt'} if spec['requirements']['stack']=='react_fastapi' else {'backend/server.mjs','backend/package.json'})
-            if not required<={f.path for f in manifest.files}:raise ValueError('Manifest omitted required build entry points')
+            manifest_prompt='PRODUCT_SOURCE_MANIFEST_JSON. Plan the smallest complete source repository for the confirmed product. Return compact JSON with files [{path,purpose}]. Choose useful names and folders for THIS product; no template inventory. Include frontend/src/main.jsx, frontend/index.html, frontend/package.json, Dockerfile, compose.yaml, and '+('backend/app.py, backend/requirements.txt' if spec['requirements']['stack']=='react_fastapi' else 'backend/server.mjs, backend/package.json')+'. Include all imported frontend components and styles as separate files if useful. React frontend dependencies may only use react, react-dom, lucide-react. No lockfiles, binary assets, embedded copies of Evolvyn or invented credentials. At most 16 concise files.'
+            for attempt in range(2):
+                try:
+                    manifest=Manifest.model_validate_json(await ask(manifest_prompt,2048,response_schema(Manifest)))
+                    if not required<={f.path for f in manifest.files}:raise ValueError('Manifest omitted required build entry points')
+                    break
+                except ValueError as error:
+                    # Retry only a malformed contract, never auth/quota/provider errors.
+                    if isinstance(error,ModelFailure) or attempt:raise
+                    save('manifest_retry','Manifest did not meet the source contract; requesting one corrected manifest')
+                    manifest_prompt+=' Previous manifest was rejected. Return a fresh JSON object with only files, each with path and purpose. Include every required entry point exactly as named. Use unique safe relative paths, no lockfiles, and at most 16 files.'
             record['manifest']=manifest.model_dump()['files'];save('manifest',f'Model planned {len(manifest.files)} files. No file contents have been created yet.')
             for item in manifest.files:
                 save('generating','Generating '+item.path)
@@ -132,7 +141,7 @@ class ModelSourceBuilder:
             raise
         except Exception as error:
             code,message=failure(error)
-            if isinstance(error,ValueError) and not isinstance(error,ModelFailure):code,message='source_contract_invalid','The model returned an invalid source manifest or file contract. Saved files are retained; retry after reviewing the scope.'
+            if isinstance(error,ValueError) and not isinstance(error,ModelFailure):code,message='source_contract_invalid',('The model returned an invalid file manifest after one correction attempt. No source files were created. Retry source generation with a smaller scope.' if not record.get('manifest') else 'A generated file failed source-contract validation. Completed files are retained; review the saved files before retrying.')
             record.update(state='FAILED',error_code=code,error=message)
             try:save('failed',message)
             except HTTPException:pass

@@ -1292,8 +1292,13 @@ export function IntelligentProductStudio({
           )}
           {contracts?.can_build === false && (
             <div role="alert" className="product-review-warning">
-              The reviewer requested changes. No source implementation was
-              started.<pre>{JSON.stringify(contracts.review, null, 2)}</pre>
+              <p>{contracts.review?.summary || "The reviewer requested changes."}</p>
+              <ul>
+                {contracts.review?.issues?.map((issue: string, i: number) => (
+                  <li key={i}>{issue}</li>
+                ))}
+              </ul>
+              <p>Revise these requirements in chat, then run the product agents again. Source generation has not started.</p>
             </div>
           )}
         </section>

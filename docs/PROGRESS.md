@@ -177,3 +177,10 @@ Generated source remains limited to the supported trusted adapters, private acco
 - [x] Private compiler supports nested source modules while rejecting filesystem escapes and unapproved dependencies.
 
 Verification: **198 backend tests passed** (one dependency deprecation warning), production build passed, and the isolated API/PostgreSQL/browser acceptance passed desktop/short-window/zoom-equivalent/mobile layout, navigation, connectors, model-boundary-controlled per-file generation, old-build isolation, and business/product trash/restore. The real private compiler bundled nested React source and rejected a host import. Existing route/OAuth/vault/PRD, guided studio and independent exported-runtime checks passed. Model and OAuth external boundaries remain controlled where live credentials are unavailable; no live Gemini or arbitrary generated-backend execution is claimed. See CLEAN_STUDIO.md for exact retention and execution limits.
+
+
+## Product Studio source-contract recovery
+
+Fixed the source path allowlist to accept the Express adapter's required `backend/server.mjs` entry point. Invalid manifests get one bounded correction attempt under the existing approval, call and token budgets; corrected manifests pass the same strict schema/path checks before any file generation. Provider failures do not trigger this contract retry. Failure messages now distinguish manifest rejection from a failed generated-file contract. Reviewer issues render as a readable list instead of raw JSON.
+
+Validation: `tests/test_model_source.py` (20 passed), `tests/test_gemini_model_discovery.py tests/test_product_intelligence.py` (25 passed), and frontend TypeScript/Vite production build passed; existing dependency/chunk warnings remain. Provider boundaries are controlled in tests. The deployed Gemini key/model failure is not reproduced or resolved by these source fixes; operator key testing and live provider access remain required. Reviewer rejection still blocks source generation until requirements are reconciled and reviewed again.
