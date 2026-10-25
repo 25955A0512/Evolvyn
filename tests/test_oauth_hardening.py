@@ -101,3 +101,12 @@ def test_private_cli_preserves_other_secrets_and_quotes_values(tmp_path):
     before=path.read_bytes()
     with pytest.raises(ValueError):write_private(path,{'PUBLIC_ORIGIN':'bad\nvalue'})
     assert path.read_bytes()==before
+
+def test_render_setup_guidance_targets_backend_environment(c,monkeypatch):
+    monkeypatch.setenv('RENDER','true')
+    rows=c.get('/api/auth/providers').json()
+    for row in rows:
+        text=' '.join(row['setup']['instructions'])
+        assert 'Render' in text and 'Web Service' in text and row['setup']['client_id_env'] in text
+        assert 'docker compose' not in text and '.local/deploy.env' not in text
+        assert 'controlled-secret' not in text

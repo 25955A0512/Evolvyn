@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Public OAuth UX: removed deployment instructions from public sign-in, retained owner/admin diagnostics, added availability/error/retry states and direct configured-provider links with Google/GitHub icons. Browser acceptance verifies the actual start redirects/state/PKCE with controlled provider boundaries, email signup, owner settings and mobile; 54 focused backend tests and the frontend build pass. Real Google/GitHub sign-in awaits provider applications and Render credentials. See [public OAuth setup](PUBLIC_OAUTH_SETUP.md).
+
 Vercel/Render preparation: 265 backend tests passed; production frontend build and actual managed-style API/compiler process checks passed, including SQL health and vault decryption after an API restart. Prepared Render Blueprint, private compiler/DB wiring, stable vault seed custody, Vercel SPA/proxy configuration and deployment guide. Actual resources, public URL wiring and live OAuth remain pending dashboard deployment. See [Vercel + Render](VERCEL_RENDER_DEPLOYMENT.md).
 
 OAuth/AWS preparation update: 239 backend tests passed, production frontend build passed, connected-route browser journey and actual API/proxy OAuth log redaction passed. Added private OAuth setup CLI, strict origin/cookie checks, initiating-session/configuration-bound states, safer callback errors, and locally checked EC2/ALB Compose/nginx overlay. AWS provisioning and live Google/GitHub acceptance still require an operator domain and registered applications. See [AWS first deployment](AWS_FIRST_DEPLOYMENT.md).

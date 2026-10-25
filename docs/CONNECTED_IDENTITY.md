@@ -38,7 +38,7 @@ Platform help can use the workspace default when separate support-service creden
 
 ## Google/GitHub signup setup
 
-Both sign-in/sign-up buttons are visible. Unconfigured providers open setup guidance instead of pretending to be connected. Create web OAuth applications using the console links in that guidance, then add the client ID/secret privately to the existing ignored `.local/deploy.env`:
+Configured public sign-in/sign-up buttons redirect directly to the provider through the server start endpoint. Unconfigured buttons show a compact unavailable state with email sign-in; deployment instructions are kept in owner/admin account settings. For the deployed Render instance, follow [PUBLIC_OAUTH_SETUP.md](PUBLIC_OAUTH_SETUP.md) and add credentials privately to the API service environment. For local Compose, create web OAuth applications and add the client ID/secret privately to the existing ignored `.local/deploy.env`:
 
 ```
 OAUTH_GOOGLE_CLIENT_ID=

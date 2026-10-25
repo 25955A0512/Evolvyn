@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { client } from "../api";
+import { OAuthSetup } from "./OAuthSetup";
 export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
   const [me, setMe] = useState<any>(null);
   const [members, setMembers] = useState<any[]>([]);
@@ -39,7 +40,10 @@ export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
             <p>{me.account.email}</p>
             <small>Current role: {me.role}</small>
           </div>
-          <AccountSecurity api={api} />
+          <AccountSecurity
+            api={api}
+            administrator={["owner", "admin"].includes(me.role)}
+          />
           <h3>Organization members</h3>
           {members.map((m) => (
             <div className="integration" key={m.id}>
@@ -78,7 +82,9 @@ export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
                 Access level
                 <select name="role">
                   <option value="viewer">Viewer · read only</option>
-                  <option value="discussant">Discussion · read and ask agents</option>
+                  <option value="discussant">
+                    Discussion · read and ask agents
+                  </option>
                   <option value="editor">
                     Editor · analyze and manage tasks
                   </option>
@@ -153,7 +159,13 @@ export function AccountTeam({ api }: { api: ReturnType<typeof client> }) {
   );
 }
 
-function AccountSecurity({ api }: { api: ReturnType<typeof client> }) {
+function AccountSecurity({
+  api,
+  administrator,
+}: {
+  api: ReturnType<typeof client>;
+  administrator: boolean;
+}) {
   const [security, setSecurity] = useState<any>(null),
     [providers, setProviders] = useState<any[]>([]),
     [error, setError] = useState("");
@@ -214,6 +226,12 @@ function AccountSecurity({ api }: { api: ReturnType<typeof client> }) {
           )}
         </div>
       ))}
+      {administrator && (
+        <details>
+          <summary>Deployment sign-in setup</summary>
+          <OAuthSetup />
+        </details>
+      )}
       <details>
         <summary>Change password</summary>
         <form

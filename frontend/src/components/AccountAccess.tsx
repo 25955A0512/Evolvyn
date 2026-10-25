@@ -6,17 +6,16 @@ export function AccountAccess({
 }: {
   onAuthenticated: (organizationId: string) => void;
 }) {
-  const [providers, setProviders] = useState<any[]>([]);
+  const route = useLocation(),
+    navigate = useNavigate();
+  const [register, setRegisterState] = useState(route.pathname === "/signup");
+  function setRegister(value: boolean) {
+    setRegisterState(value);
+    navigate(value ? "/signup" : "/login");
+  }
   useEffect(() => {
-    fetch("/api/auth/providers")
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setProviders)
-      .catch(() => {});
-  }, []);
-  const route=useLocation(),navigate=useNavigate();
-  const [register, setRegisterState] = useState(route.pathname==="/signup");
-  function setRegister(value:boolean){setRegisterState(value);navigate(value?"/signup":"/login");}
-  useEffect(()=>{setRegisterState(route.pathname==="/signup");},[route.pathname]);
+    setRegisterState(route.pathname === "/signup");
+  }, [route.pathname]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   return (
@@ -62,7 +61,10 @@ export function AccountAccess({
                   : "Check your email and password; use at least 12 password characters",
               );
             onAuthenticated(body.organization_id);
-            if (["/login","/signup","/auth/callback"].includes(route.pathname)) navigate("/dashboard");
+            if (
+              ["/login", "/signup", "/auth/callback"].includes(route.pathname)
+            )
+              navigate("/dashboard");
           } catch (e) {
             setError(String(e));
           } finally {

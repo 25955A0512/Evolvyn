@@ -29,6 +29,19 @@ def oauth_cookie_name():
     name=session_cookie_name()
     return 'evolvyn_oauth' if name=='evolvyn_session' else name+'_oauth'
 def oauth_cookie_path(name):return '/' if name.startswith('__Host-') else '/api/auth/oauth'
+def setup_instructions(provider):
+    if os.getenv('RENDER')=='true':
+        prefix='OAUTH_'+provider.upper()
+        return ['Create a web OAuth application in the provider console using the exact callback URL below.',
+                'For Google, configure the consent screen and add your team as test users while the application is in testing.',
+                'In Render, open the Evolvyn API Web Service → Environment. Add '+prefix+'_CLIENT_ID and '+prefix+'_CLIENT_SECRET with the application credentials. Do not put these in Vercel frontend variables or share them in chat.',
+                'Keep PUBLIC_ORIGIN set to the Vercel frontend HTTPS origin and COOKIE_SECURE=1. Save and redeploy the Render API service.',
+                'Refresh the login page. Configured providers redirect directly to their authorization pages; verify a real sign-in before sharing access.']
+    return ['Create a web OAuth application in the provider console.',
+            'Register this exact callback URL. For Google, add your email as a test user while the consent screen is in testing.',
+            'Run python scripts/configure_oauth.py --provider '+provider+' on the machine running Evolvyn. The client secret is entered with hidden input and saved only in ignored .local/deploy.env.',
+            'Recreate the API container with docker compose --env-file .local/deploy.env up -d --force-recreate api, then refresh this page.',
+            'Complete a real provider sign-in. Configuration alone is not proof of successful authorization.']
 def issue(response,account,organization,c):
     token=secrets.token_urlsafe(32)
     c.execute('DELETE FROM account_sessions WHERE expires<now()')
@@ -106,7 +119,7 @@ def install(app,conn,auth):
             try:
                 settings=configuration(provider);enabled=bool(settings['client_id'] and settings['client_secret'])
             except HTTPException as error:enabled=False;problem=error.detail
-            rows.append({'id':provider,'name':base['name'],'enabled':enabled,'configuration_status':'ready_for_sign_in' if enabled else 'invalid_configuration' if problem else 'missing_credentials','configuration_error':problem,'start_url':'/api/auth/oauth/'+provider+'/start','setup':{'callback_url':settings['redirect_uri'] if settings else '', 'client_id_env':'OAUTH_'+provider.upper()+'_CLIENT_ID','client_secret_env':'OAUTH_'+provider.upper()+'_CLIENT_SECRET','console_url':'https://console.cloud.google.com/auth/clients' if provider=='google' else 'https://github.com/settings/developers','instructions':['Create a web OAuth application in the provider console.','Register this exact callback URL. For Google, add your email as a test user while the consent screen is in testing.','Run python scripts/configure_oauth.py --provider '+provider+' on the machine running Evolvyn. The client secret is entered with hidden input and saved only in ignored .local/deploy.env.','Recreate the API container with docker compose --env-file .local/deploy.env up -d --force-recreate api, then refresh this page.','Complete a real provider sign-in. Configuration alone is not proof of successful authorization.']}})
+            rows.append({'id':provider,'name':base['name'],'enabled':enabled,'configuration_status':'ready_for_sign_in' if enabled else 'invalid_configuration' if problem else 'missing_credentials','configuration_error':problem,'start_url':'/api/auth/oauth/'+provider+'/start','setup':{'callback_url':settings['redirect_uri'] if settings else '', 'client_id_env':'OAUTH_'+provider.upper()+'_CLIENT_ID','client_secret_env':'OAUTH_'+provider.upper()+'_CLIENT_SECRET','console_url':'https://console.cloud.google.com/auth/clients' if provider=='google' else 'https://github.com/settings/developers','instructions':setup_instructions(provider)}})
         return rows
     @app.get('/api/auth/oauth/{provider}/start')
     def start(provider:str):return begin(provider)

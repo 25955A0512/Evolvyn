@@ -1186,3 +1186,24 @@
     padding: 8px;
   }
 }
+/* Provider authorization is a user flow; deployment setup stays in account settings. */
+.account-access .oauth-providers .oauth-provider {
+  background: var(--surface, #fff);
+  color: var(--ink, #293d32);
+  border: 1px solid var(--line, #d5dfd4);
+  border-radius: 10px;
+  min-height: 50px;
+  font-size: 16px;
+  font-weight: 500;
+  gap: 12px;
+  text-decoration: none;
+  width: 100%;
+}
+.account-access .oauth-provider:disabled { opacity: .65; cursor: not-allowed; }
+.account-access .oauth-provider:not(:disabled):hover { border-color: #86a58a; background: #f4f7f0; }
+.oauth-brand { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 22px; }
+.oauth-brand svg { display: block; }
+.account-access .oauth-provider small { font-size: 11px; font-weight: 400; margin-left: auto; }
+.oauth-availability { font-size: 13px; line-height: 1.6; color: var(--muted, #637266); margin: 0 0 12px; }
+.oauth-availability:empty { display: none; }
+.account-access .oauth-retry { background: transparent; color: #315e45; width: auto; padding: 5px 0; font-size: 13px; }

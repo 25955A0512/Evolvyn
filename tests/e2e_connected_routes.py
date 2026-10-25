@@ -10,9 +10,9 @@ with sync_playwright() as pw:
  page=browser.new_page(viewport={'width':1440,'height':1000});errors=[]
  page.on('pageerror',lambda error:errors.append(str(error)))
  page.goto(base+'/signup')
- expect(page.get_by_role('button',name=re.compile('^Sign up with Google'))).to_be_visible()
- page.get_by_role('button',name=re.compile('^Sign up with Google')).click()
- expect(page.locator('.oauth-setup')).to_contain_text('/api/auth/oauth/google/callback')
+ expect(page.get_by_role('button',name=re.compile('^Sign up with Google'))).to_be_disabled()
+ expect(page.locator('.oauth-availability')).to_contain_text('continue with email')
+ expect(page.locator('.account-access .oauth-setup')).to_have_count(0)
  page.get_by_label('Workspace name',exact=True).fill('Synthetic connected acceptance')
  page.get_by_label('Email',exact=True).fill('connected-'+uuid4().hex+'@example.test')
  page.get_by_label('Password',exact=True).fill('acceptance-'+uuid4().hex)
