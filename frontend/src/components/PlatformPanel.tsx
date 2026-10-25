@@ -1,3 +1,4 @@
+import "../dashboard-refresh.css";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { AccountTeam } from "./AccountTeam";
 import { useEffect, useState } from "react";
@@ -62,7 +63,7 @@ export function PlatformPanel({
   onTabChange,
 }: {
   view: View;
-  onTabChange?: (tab:View)=>void;
+  onTabChange?: (tab: View) => void;
   api: ReturnType<typeof client>;
   businessId: string;
   conversation: Convo | null;
@@ -71,8 +72,11 @@ export function PlatformPanel({
   onRefresh?: () => void;
 }) {
   const [tab, setTabState] = useState<View>(view);
-  function setTab(value:View){setTabState(value);onTabChange?.(value);}
-  useEffect(()=>setTabState(view),[view]);
+  function setTab(value: View) {
+    setTabState(value);
+    onTabChange?.(value);
+  }
+  useEffect(() => setTabState(view), [view]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -141,7 +145,7 @@ export function PlatformPanel({
   const titles = {
     tasks: "Your action plan",
     reports: "Reports & outcomes",
-    automation: "Keep the loop running",
+    automation: "Monitoring",
     workflow: "Inside the workflow",
     projects: "Business projects",
     account: "Account & team",
@@ -153,6 +157,7 @@ export function PlatformPanel({
         aria-modal="true"
         aria-labelledby="panel-title"
         className="platform-panel"
+        data-view={tab}
       >
         <header>
           <div>
@@ -402,9 +407,27 @@ export function PlatformPanel({
           )}
           {tab === "automation" && (
             <>
+              <section
+                className="dashboard-stat-grid"
+                aria-label="Monitoring summary"
+              >
+                {[
+                  ["Schedules", schedules.length],
+                  ["Enabled", schedules.filter((s) => s.enabled).length],
+                  ["Paused", schedules.filter((s) => !s.enabled).length],
+                  [
+                    "Needs attention",
+                    schedules.filter((s) => s.last_error).length,
+                  ],
+                ].map(([label, value]) => (
+                  <article key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </article>
+                ))}
+              </section>
               <p className="panel-intro">
-                Schedule repeat analysis of uploaded evidence. The backend must
-                be running. Every proposed action still waits for your approval.
+                Scheduled reviews. Actions need approval.
               </p>
               {conversation ? (
                 <form

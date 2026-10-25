@@ -1,3 +1,4 @@
+import { WorkspaceDialog } from "./WorkspaceDialog";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowUpRight,
@@ -53,6 +54,43 @@ export function GrowthWorkspace({
     [business, setBusiness] = useState(businessId || ""),
     [products, setProducts] = useState<any[]>([]);
   const [initializedScope, setInitializedScope] = useState("");
+  const [widgetDialog, setWidgetDialog] = useState(false),
+    [productView, setProductView] = useState("chart");
+  const [widgets, setWidgets] = useState<string[]>([
+    "summary",
+    "actions",
+    "health",
+    "products",
+  ]);
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(
+        sessionStorage.getItem("evolvyn-growth-layout:" + scope) || "null",
+      );
+      setWidgets(
+        Array.isArray(saved)
+          ? saved.filter((x) =>
+              ["summary", "actions", "health", "products"].includes(x),
+            )
+          : ["summary", "actions", "health", "products"],
+      );
+    } catch {
+      setWidgets(["summary", "actions", "health", "products"]);
+    }
+  }, [scope]);
+  function toggleWidget(id: string) {
+    setWidgets((current) => {
+      const next = current.includes(id)
+        ? current.filter((x) => x !== id)
+        : [...current, id];
+      sessionStorage.setItem(
+        "evolvyn-growth-layout:" + scope,
+        JSON.stringify(next),
+      );
+      return next;
+    });
+  }
+
   const [conversationId, setConversationId] = useState(""),
     [workspace, setWorkspace] = useState<any>(null),
     [report, setReport] = useState<any>(null),
@@ -234,28 +272,69 @@ export function GrowthWorkspace({
   }
   const hasEvidence = files.length > 0;
   return (
-    <div className="growth-workspace" aria-label="Business growth workspace">
+    <div
+      className="growth-workspace"
+      aria-label="Business growth workspace"
+      data-hide-summary={!widgets.includes("summary")}
+      data-hide-actions={!widgets.includes("actions")}
+      data-hide-health={!widgets.includes("health")}
+      data-hide-products={!widgets.includes("products")}
+    >
+      {widgetDialog && (
+        <WorkspaceDialog
+          title="Customize dashboard"
+          onClose={() => setWidgetDialog(false)}
+        >
+          <div className="dashboard-widget-options">
+            {[
+              ["summary", "Performance summary"],
+              ["products", "Product performance"],
+              ["actions", "Next actions"],
+              ["health", "Evidence status"],
+            ].map(([id, label]) => (
+              <label key={id}>
+                <input
+                  type="checkbox"
+                  checked={widgets.includes(id)}
+                  onChange={() => toggleWidget(id)}
+                />
+                <span>{label}</span>
+              </label>
+            ))}
+            <button
+              className="studio-primary"
+              onClick={() => setWidgetDialog(false)}
+            >
+              Done
+            </button>
+          </div>
+        </WorkspaceDialog>
+      )}
       <header className="growth-header">
         <div>
-          <span className="eyebrow">YOUR BUSINESS, MOVING FORWARD</span>
+          <span className="eyebrow">BUSINESS OVERVIEW</span>
           <h1>
             Grow your business<span>.</span>
           </h1>
-          <p>
-            Understand what changed. Decide what matters. Measure what works.
-          </p>
+          <p>Performance, opportunities and outcomes.</p>
         </div>
-        <button
-          className="growth-quiet"
-          disabled={initializedScope !== scope || busy}
-          onClick={() => {
-            setNewBusiness(false);
-            setProfile(!profile);
-          }}
-        >
-          <Settings2 size={17} />
-          Business profile
-        </button>
+        <div className="growth-header-actions">
+          <button onClick={() => setWidgetDialog(true)}>
+            <Plus size={16} />
+            Customize
+          </button>
+          <button
+            className="growth-quiet"
+            disabled={initializedScope !== scope || busy}
+            onClick={() => {
+              setNewBusiness(false);
+              setProfile(!profile);
+            }}
+          >
+            <Settings2 size={17} />
+            Business profile
+          </button>
+        </div>
       </header>
       <section
         className="growth-context"
@@ -465,14 +544,12 @@ export function GrowthWorkspace({
                       : "START WITH YOUR BUSINESS DATA"}
                   </span>
                   <h2>
-                    {report
-                      ? report.query
-                      : "Your next growth decision starts here."}
+                    {report ? report.query : "Your business at a glance."}
                   </h2>
                   <p>
                     {report
-                      ? `Captured ${date(report.created_at)}. Observations from your data, with hypotheses kept separate.`
-                      : "Bring your sales and customer feedback into one workspace. Get a clear baseline, review opportunities, and track the actions you choose."}
+                      ? `Snapshot · ${date(report.created_at)}`
+                      : "Upload sales or feedback to create your first analysis."}
                   </p>
                   <button
                     className="studio-primary"
@@ -545,7 +622,7 @@ export function GrowthWorkspace({
               <div className="growth-overview-grid">
                 <section className="growth-panel">
                   <div className="growth-section-heading">
-                    <h2>What deserves your attention</h2>
+                    <h2>Next actions</h2>
                     <Lightbulb size={20} />
                   </div>
                   {report ? (
@@ -578,17 +655,13 @@ export function GrowthWorkspace({
                     <div className="growth-empty">
                       <BarChart3 size={32} />
                       <h3>A useful baseline comes first.</h3>
-                      <p>
-                        Upload a sales CSV or customer feedback, then analyze a
-                        specific business question. Recommendations will appear
-                        here.
-                      </p>
+                      <p>Upload evidence to see recommendations.</p>
                     </div>
                   )}
                 </section>
                 <section className="growth-panel">
                   <div className="growth-section-heading">
-                    <h2>Evidence health</h2>
+                    <h2>Evidence status</h2>
                     <Database size={20} />
                   </div>
                   <dl className="growth-health">
@@ -603,25 +676,32 @@ export function GrowthWorkspace({
                       <dd>{date(report?.created_at)}</dd>
                     </div>
                     <div>
-                      <dt>Live account sync</dt>
-                      <dd>Not configured here</dd>
+                      <dt>Social accounts</dt>
+                      <dd>
+                        <button onClick={() => setTab("social")}>
+                          View accounts
+                        </button>
+                      </dd>
                     </div>
                     <div>
                       <dt>Forecast</dt>
                       <dd>Not available</dd>
                     </div>
                   </dl>
-                  <p>
-                    {report?.forecast?.reason ||
-                      "A forecast requires comparable, complete first-party history and a tested baseline. Nothing is projected from missing data."}
-                  </p>
+                  <details>
+                    <summary>Forecast details</summary>
+                    <p>
+                      {report?.forecast?.reason ||
+                        "A forecast requires comparable, complete first-party history and a tested baseline. Nothing is projected from missing data."}
+                    </p>
+                  </details>
                   <button onClick={() => setTab("evidence")}>
                     Review sources <ArrowUpRight size={15} />
                   </button>
                 </section>
               </div>
               {data?.kind === "sales" && (
-                <section className="growth-panel">
+                <section className="growth-panel growth-product-panel">
                   <div className="growth-section-heading">
                     <h2>Product contribution</h2>
                     <span>
@@ -629,11 +709,62 @@ export function GrowthWorkspace({
                     </span>
                   </div>
                   <p>
-                    Snapshot sales contribution, not demand or profit. Up to 8
-                    products shown; all validated rows contribute to the totals
-                    above.
+                    {productView === "chart"
+                      ? "Sales contribution · top 8 products"
+                      : `Sales contribution · ${data.products.length} products`}
                   </p>
-                  <div className="growth-product-bars">
+                  <div className="dashboard-view-toggle">
+                    <button
+                      aria-pressed={productView === "chart"}
+                      onClick={() => setProductView("chart")}
+                    >
+                      Chart
+                    </button>
+                    <button
+                      aria-pressed={productView === "table"}
+                      onClick={() => setProductView("table")}
+                    >
+                      Table
+                    </button>
+                  </div>
+                  {productView === "table" && (
+                    <div className="dashboard-table-scroll">
+                      <table className="growth-performance-table">
+                        <thead>
+                          <tr>
+                            <th>Product</th>
+                            <th>Units</th>
+                            <th>
+                              Revenue ·{" "}
+                              {data.currency || "currency unspecified"}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {data.products.map((p: any) => (
+                            <tr key={p.product_id}>
+                              <td>
+                                <strong>
+                                  {p.product_name || p.product_id}
+                                </strong>
+                                <small>{p.product_id}</small>
+                              </td>
+                              <td>{p.units_sold}</td>
+                              <td>
+                                {data.net_revenue === null
+                                  ? p.gross_sales
+                                  : (p.net_revenue ?? "Unavailable")}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <div
+                    className="growth-product-bars"
+                    hidden={productView !== "chart"}
+                  >
                     {data.products.slice(0, 8).map((p: any) => {
                       const amount = Number(
                           data.net_revenue === null
@@ -1349,12 +1480,9 @@ export function GrowthWorkspace({
                   <Clock3 size={15} />
                   Recurring evidence review
                 </span>
-                <h2>Keep checking what matters.</h2>
+                <h2>Monitoring</h2>
                 <p>
-                  Uses Evolvyn’s existing durable scheduler. Reviews the latest
-                  attached evidence and queues proposed actions; it never
-                  approves them. This does not sync external stores or social
-                  accounts.
+                  Review uploaded evidence on a schedule. Actions need approval.
                 </p>
                 <form
                   className="growth-inline-form"
@@ -1408,10 +1536,8 @@ export function GrowthWorkspace({
                   </button>
                 </form>
                 <p className="growth-help">
-                  Fixed elapsed cadence. Due times are displayed in your browser
-                  timezone. Source polling, provider sync, threshold rules,
-                  quiet hours and growth forecasting are not implemented by this
-                  schedule.
+                  Times use your browser timezone. Social account polling is
+                  managed in Social intelligence.
                 </p>
               </section>
               {!workspace?.schedules.length && (

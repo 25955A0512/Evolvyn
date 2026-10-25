@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Dashboard refresh: compact key vault dialogs and route controls, connected/discover/tools views, focused discussion composer, configurable Growth Insights widgets with real product chart/table, and schedule summaries are implemented. Browser acceptance covers the existing growth approval flow and mobile layouts with controlled provider boundaries. See [dashboard scope and checks](DASHBOARD_REFRESH.md).
+
 Product chat recovery: Enter-to-send/Shift+Enter, IME/dedup guards, immediate pending feedback and draft recovery are implemented; redundant catalog requests were removed. Key vault can discover provider-listed Gemini models, explicitly apply a chosen model to all agents, and show resolved routes. See [chat/model recovery](CHAT_AND_GEMINI_RECOVERY.md).
 
 Social evidence update: Growth Insights now integrates authorized Instagram/YouTube read adapters and the extensible social-v1 MCP contract with the shared registry, graph jobs, vault and scheduler. Normalized snapshots, visible receipts, role reviews, JSON exports, nullable metrics and conservative forecast suppression are implemented. Instagram direct OAuth, long-lived exchange and bounded renewal are now implemented with controlled-provider tests; live Meta approval/acceptance, social publishing and comprehensive retention remain incomplete. See [social acceptance scope](SOCIAL_GROWTH.md) and [audit](SOCIAL_GROWTH_AUDIT.md).

@@ -1,3 +1,4 @@
+import { WorkspaceDialog } from "./WorkspaceDialog";
 import { useEffect, useRef, useState } from "react";
 import {
   Users,
@@ -121,11 +122,8 @@ export function DiscussionRoom({
           <Users size={22} />
         </span>
         <div>
-          <h1>Think it through with your team.</h1>
-          <p>
-            One question. Business, marketing, product and review
-            perspectives—grounded in your evidence.
-          </p>
+          <h1>Discussion room</h1>
+          <p>Business, marketing and product. One conversation.</p>
         </div>
         <button
           aria-label="Discussion settings"
@@ -141,7 +139,7 @@ export function DiscussionRoom({
       )}
       <div className="discussion-chat-context">
         <label>
-          Evidence conversation
+          Workspace
           <select
             aria-label="Discussion conversation"
             value={conv?.id || ""}
@@ -169,7 +167,7 @@ export function DiscussionRoom({
           }
         >
           <Plus size={16} />
-          {conv ? "New discussion" : "Create discussion workspace"}
+          {conv ? "New discussion" : "Create workspace"}
         </button>
         <label className="discussion-attach">
           <Paperclip size={18} />
@@ -208,56 +206,59 @@ export function DiscussionRoom({
         </div>
       )}
       {settings && (
-        <section className="discussion-settings">
-          <label>
-            Model routing
-            <select
-              aria-label="Discussion model route"
-              value={mode}
-              onChange={(e) => setMode(e.target.value)}
-            >
-              <option value="default">Workspace vault / agent overrides</option>
-              <option value="local">Local model</option>
-              <option value="evidence">
-                Explicit offline evidence rules (no AI)
-              </option>
-            </select>
-          </label>
-          <label>
-            Maximum review rounds
-            <input
-              type="number"
-              min={1}
-              max={3}
-              value={rounds}
-              onChange={(e) => setRounds(Number(e.target.value))}
+        <WorkspaceDialog
+          title="Discussion settings"
+          onClose={() => setSettings(false)}
+        >
+          <section className="discussion-settings">
+            <label>
+              Model routing
+              <select
+                aria-label="Discussion model route"
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+              >
+                <option value="default">Workspace models</option>
+                <option value="local">Local model</option>
+                <option value="evidence">Evidence rules · no AI</option>
+              </select>
+            </label>
+            <label>
+              Review rounds
+              <input
+                type="number"
+                min={1}
+                max={3}
+                value={rounds}
+                onChange={(e) => setRounds(Number(e.target.value))}
+              />
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={fallback}
+                onChange={(e) => setFallback(e.target.checked)}
+              />
+              Allow labeled offline fallback
+            </label>
+            <ToolAccess
+              api={api}
+              onManage={onManage}
+              inline
+              calls={parseCalls(tools)}
+              onChange={(v) => setTools(JSON.stringify(v))}
+              conversationId={conv?.id}
             />
-          </label>
-          <label>
-            <input
-              type="checkbox"
-              checked={fallback}
-              onChange={(e) => setFallback(e.target.checked)}
-            />
-            Allow an explicitly labeled offline rules fallback
-          </label>
-          <ToolAccess
-            api={api}
-            onManage={onManage}
-            inline
-            calls={parseCalls(tools)}
-            onChange={(v) => setTools(JSON.stringify(v))}
-            conversationId={conv?.id}
-          />
-          <details>
-            <summary>Advanced tool arguments</summary>
-            <textarea
-              aria-label="Discussion context tools"
-              value={tools}
-              onChange={(e) => setTools(e.target.value)}
-            />
-          </details>
-        </section>
+            <details>
+              <summary>Advanced tool arguments</summary>
+              <textarea
+                aria-label="Discussion context tools"
+                value={tools}
+                onChange={(e) => setTools(e.target.value)}
+              />
+            </details>
+          </section>
+        </WorkspaceDialog>
       )}
       {runs.length > 0 && (
         <details className="discussion-history">
@@ -288,17 +289,30 @@ export function DiscussionRoom({
       <div className="discussion-thread" aria-live="polite">
         {!active ? (
           <div className="discussion-intro">
+            <div className="discussion-orb" aria-hidden="true">
+              e
+            </div>
             <div className="discussion-avatars">
               {["BA", "MA", "PM", "QA"].map((v) => (
                 <span key={v}>{v}</span>
               ))}
             </div>
-            <h2>What decision are you working on?</h2>
+            <h2>What’s your next move?</h2>
             <p>
-              Attach sales data or feedback, then ask your question below. Your
-              selected models generate the discussion. Missing credentials and
-              provider failures are shown clearly.
+              Ask a question or add evidence. Your team will take it from here.
             </p>
+            <div className="discussion-starters">
+              {[
+                "Review our growth strategy",
+                "Understand customer feedback",
+                "Prioritize product improvements",
+              ].map((question) => (
+                <button key={question} onClick={() => setGoal(question)}>
+                  {question}
+                  <ArrowUp size={15} />
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <>
@@ -416,7 +430,7 @@ export function DiscussionRoom({
                   });
                 }}
               >
-                <h3>Keep the decision you agree with.</h3>
+                <h3>Review decision</h3>
                 <label>
                   Approved plan
                   <textarea
@@ -485,6 +499,7 @@ export function DiscussionRoom({
         className="discussion-composer"
         onSubmit={(e) => {
           e.preventDefault();
+          if (busy || running) return;
           act(async () => {
             const c = conv || (await createConversation());
             const r = await api.json("/discussions", {
@@ -515,6 +530,17 @@ export function DiscussionRoom({
           aria-label="Decision or business goal"
           value={goal}
           onChange={(e) => setGoal(e.target.value)}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              if (!e.repeat && !busy && !running)
+                e.currentTarget.form?.requestSubmit();
+            }
+          }}
           placeholder="Ask your team a business or product question…"
           required
           minLength={1}
@@ -526,16 +552,14 @@ export function DiscussionRoom({
             <Settings2 size={16} />
             {mode === "default" ? "Workspace models" : mode}
           </button>
-          <small>
-            Every write and saved decision stays under your approval.
-          </small>
+          <small>Decisions need your approval.</small>
           <button
             className="studio-primary"
             aria-label="Start specialist discussion"
             disabled={busy || running || goal.trim().length < 1}
           >
             <ArrowUp size={19} />
-            <span>Start specialist discussion</span>
+            <span>Send</span>
           </button>
         </div>
       </form>

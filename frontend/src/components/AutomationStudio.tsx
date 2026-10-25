@@ -68,15 +68,11 @@ export function AutomationStudio({
     convos.filter((c) => c.project_id === (projectId || null)).map((c) => c.id),
   );
   return (
-    <div className="automation-studio">
+    <div className="automation-studio dashboard-page">
       <div className="automation-title">
-        <span className="eyebrow">CANVAS / AUTOMATIONS</span>
-        <h2>Turn a review into a repeatable workflow.</h2>
-        <p>
-          Choose a schedule, react to new evidence, or add a measured condition.
-          Reviews use the real agent worker; actions keep their human approval
-          gate.
-        </p>
+        <span className="dashboard-kicker">WORKSPACE</span>
+        <h2>Monitoring</h2>
+        <p>Schedules, triggers and recent activity.</p>
       </div>
       {error && (
         <p className="error" role="alert">
@@ -88,6 +84,35 @@ export function AutomationStudio({
           {notice}
         </p>
       )}
+      <section className="dashboard-stat-grid" aria-label="Monitoring summary">
+        {[
+          [
+            "Schedules",
+            schedules.filter((s) => allowed.has(s.conversation_id)).length,
+          ],
+          [
+            "Triggers",
+            triggers.filter((s) => allowed.has(s.conversation_id)).length,
+          ],
+          [
+            "Enabled",
+            [...schedules, ...triggers].filter(
+              (s) => allowed.has(s.conversation_id) && s.enabled,
+            ).length,
+          ],
+          [
+            "Needs attention",
+            [...schedules, ...triggers].filter(
+              (s) => allowed.has(s.conversation_id) && s.last_error,
+            ).length,
+          ],
+        ].map(([label, value]) => (
+          <article key={label}>
+            <span>{label}</span>
+            <strong>{value}</strong>
+          </article>
+        ))}
+      </section>
       <div className="automation-templates">
         {[
           {

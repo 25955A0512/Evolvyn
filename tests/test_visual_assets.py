@@ -16,6 +16,9 @@ def test_runtime_export_preserves_the_self_contained_visual_assets():
         assert '<svg' in content and '<script' not in content and 'href=' not in content
     assert 'evolvyn/frontend/src/workspace-refresh.css' in files
     assert 'evolvyn/frontend/src/components/ComposerActions.tsx' in files
+    assert 'evolvyn/frontend/src/dashboard-refresh.css' in files
+    for component in ['WorkspaceDialog', 'KeyVaultPanel', 'ConnectionsDashboard']:
+        assert f'evolvyn/frontend/src/components/{component}.tsx' in files
 
 def test_uploaded_logo_bytes_survive_embedding_and_runtime_export():
     files=bundle(ROOT)

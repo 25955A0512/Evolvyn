@@ -157,8 +157,7 @@ export function ConnectorGallery({
     <section className="connector-gallery">
       <div className="connector-gallery-heading">
         <div>
-          <span className="eyebrow">DISCOVER CONNECTIONS</span>
-          <h3>Bring your tools into the conversation.</h3>
+          <h3>Discover connectors</h3>
         </div>
         <label>
           <Search size={18} />
@@ -202,8 +201,8 @@ export function ConnectorGallery({
                   {r.profile
                     ? server
                       ? `MCP ${server.status} · ${server.tools?.length || 0} discovered tools`
-                      : "Bundled MCP · no key required"
-                    : "Requires your MCP endpoint and permissions; not connected by this card"}
+                      : "Local MCP · no key"
+                    : "Setup required"}
                 </small>
               </div>
               <button
@@ -220,9 +219,7 @@ export function ConnectorGallery({
         })}
       </div>
       <p className="connector-gallery-note">
-        Catalog entries are setup recipes. Only actual registrations, successful
-        checks and tool calls establish access. No third-party OAuth connection
-        or store access is implied.
+        Connections are verified through successful checks.
       </p>
     </section>
   );
