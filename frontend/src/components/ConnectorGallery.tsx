@@ -10,21 +10,23 @@ export function ConnectorArt({
   size?: number;
 }) {
   const key = name.toLowerCase();
-  const logo = key.includes("gemini")
-    ? "gemini"
-    : key.includes("groq")
-      ? "groq"
-      : key.includes("github")
-        ? "github"
-        : key.includes("slack")
-          ? "slack"
-          : key.includes("drive")
-            ? "google-drive"
-            : key.includes("notion")
-              ? "notion"
-              : key.includes("shopify")
-                ? "shopify"
-                : null;
+  const logo = key.includes("instagram")
+    ? "instagram"
+    : key.includes("gemini")
+      ? "gemini"
+      : key.includes("groq")
+        ? "groq"
+        : key.includes("github")
+          ? "github"
+          : key.includes("slack")
+            ? "slack"
+            : key.includes("drive")
+              ? "google-drive"
+              : key.includes("notion")
+                ? "notion"
+                : key.includes("shopify")
+                  ? "shopify"
+                  : null;
   const asset = key.includes("github")
     ? "brand-github"
     : key.includes("slack")

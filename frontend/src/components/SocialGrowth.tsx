@@ -10,6 +10,7 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { client } from "../api";
 import type { ManageConnections } from "./ToolAccess";
+import { instagramLogo } from "../assets/instagram-logo";
 const date = (s: string) => (s ? new Date(s).toLocaleString() : "Never");
 export function SocialGrowth({
   api,
@@ -332,6 +333,13 @@ export function SocialGrowth({
                 })
               }
             >
+              <img
+                src={instagramLogo}
+                width={24}
+                height={24}
+                alt=""
+                aria-hidden="true"
+              />
               Connect with Instagram
             </button>
           </div>
@@ -415,6 +423,15 @@ export function SocialGrowth({
             <div className="growth-section-heading">
               <div>
                 <span className="growth-badge">
+                  {s.provider === "instagram" && (
+                    <img
+                      src={instagramLogo}
+                      width={20}
+                      height={20}
+                      alt=""
+                      aria-hidden="true"
+                    />
+                  )}
                   {s.provider} ·{" "}
                   {!s.enabled
                     ? "Disconnected"
