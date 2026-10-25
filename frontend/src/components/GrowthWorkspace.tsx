@@ -23,9 +23,10 @@ import { ExecutionView } from "./ExecutionView";
 import { GrowthReview } from "./GrowthReview";
 import { ToolAccess, parseCalls, type ManageConnections } from "./ToolAccess";
 import { GrowthCampaign } from "./GrowthCampaign";
+import { SocialGrowth } from "./SocialGrowth";
 import "../growth-workspace.css";
 type API = ReturnType<typeof client>;
-type Tab = "overview" | "evidence" | "actions" | "monitoring";
+type Tab = "overview" | "evidence" | "actions" | "monitoring" | "social";
 const date = (value?: string) =>
   value ? new Date(value).toLocaleString() : "Not yet";
 export function GrowthWorkspace({
@@ -414,6 +415,7 @@ export function GrowthWorkspace({
           [
             ["overview", "Overview", TrendingUp],
             ["evidence", "Evidence", Database],
+            ["social", "Social intelligence", Activity],
             ["actions", "Action plan", Target],
             ["monitoring", "Monitoring", Activity],
           ] as const
@@ -437,6 +439,14 @@ export function GrowthWorkspace({
         </div>
       ) : (
         <>
+          {tab === "social" && (
+            <SocialGrowth
+              key={conversationId}
+              api={api}
+              conversationId={conversationId}
+              onManage={onManage}
+            />
+          )}
           {tab === "overview" && (
             <>
               <section className="growth-hero">

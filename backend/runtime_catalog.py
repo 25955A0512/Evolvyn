@@ -3,6 +3,7 @@ from fastapi import Depends
 
 # Stable entity/action terms; custom registrations extend these terms via metadata.
 BUILTIN_ONTOLOGY={
+ 'sync_growth_social':(['social_account','post','evidence'],['observe','ingest']),
  'analyze_business':(['business','customer_feedback','evidence'],['observe','analyze']),
  'investigate_operations':(['incident','evidence'],['observe','analyze']),
  'prioritize_actions':(['recommendation'],['rank']),

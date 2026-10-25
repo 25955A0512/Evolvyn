@@ -46,6 +46,7 @@ def init():
         initialize(c)
         c.execute('CREATE TABLE IF NOT EXISTS records (id text PRIMARY KEY, owner text NOT NULL, kind text NOT NULL, body jsonb NOT NULL, created timestamptz DEFAULT now())')
         c.execute('CREATE INDEX IF NOT EXISTS records_tenant_kind_created ON records(owner,kind,created DESC)')
+        c.execute("CREATE INDEX IF NOT EXISTS social_snapshot_source ON records(owner,(body->>'source_id'),created DESC) WHERE kind='social_snapshot'")
         c.execute("CREATE INDEX IF NOT EXISTS records_trash_expiry ON records((body->>'purge_at')) WHERE kind='trash_entry'")
         from backend.commerce import initialize as initialize_commerce
         initialize_commerce(c)
@@ -693,13 +694,19 @@ async def schedule_tick():
                     body['enabled']=False
                     raise HTTPException(403,'Schedule membership was revoked')
                 actor_token=ACTOR.set(Principal(owner,body['actor'],member['role']))
-            run=await launch(body['conversation_id'],Message(text=body['query'],mode=body['mode'],allow_fallback=body.get('allow_fallback',False)),owner)
+            if body.get('social_source_id'):
+                run=await SOCIAL_GROWTH.queue(owner,body['social_source_id'])
+            else:
+                run=await launch(body['conversation_id'],Message(text=body['query'],mode=body['mode'],allow_fallback=body.get('allow_fallback',False)),owner)
             body.update(last_run=run['id'],last_error=None)
         except Exception:
             body['last_error']='Run could not start; check evidence and whether this conversation already has an active analysis.'
         finally:
             if actor_token:ACTOR.reset(actor_token)
-        save(owner,'schedule',body,id)
+        # A pause/cadence edit made while a job was starting must survive the receipt.
+        patch={key:body[key] for key in ('last_run','last_error') if key in body}
+        if not body.get('enabled'):patch['enabled']=False
+        with conn() as c:c.execute("UPDATE records SET body=body || %s::jsonb WHERE owner=%s AND id=%s AND kind='schedule'",(json.dumps(patch),owner,id))
 
 async def schedule_loop():
     while True:
@@ -1013,3 +1020,8 @@ install_product_documents(app,auth,get,conn,POLICY)
 from backend.trash import Trash
 TRASH=Trash({name:globals()[name] for name in ("get","listing","conn","POLICY","JOBS")})
 TRASH.install(app,auth)
+
+from backend.social_growth import SocialGrowth,Scoped as SocialScope,Result as SocialResult
+SOCIAL_GROWTH=SocialGrowth({name:globals()[name] for name in ('get','save','listing','conn','POLICY','TOOL_PLUGINS','MCP_REGISTRY','VAULT','GRAPH_HARNESS')})
+REGISTRY.register(Tool('sync_growth_social','Refresh an explicitly bound read-only social account and persist a verified observation; no external writes',SocialScope,SocialResult,SOCIAL_GROWTH.collect,timeout=40,idempotent=True))
+SOCIAL_GROWTH.install(app,auth)

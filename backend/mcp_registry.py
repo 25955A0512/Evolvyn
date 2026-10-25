@@ -21,13 +21,13 @@ from typing import Literal
 
 def credential_prefix(owner):return 'EVOLVYN_MCP_'+hashlib.sha256(owner.encode()).hexdigest()[:12].upper()+'_'
 
-PROFILES={'business_strategy':'backend.mcp_server','evidence_utilities':'backend.mcp_utilities','github':'backend.github_mcp'}
-def is_external(server):return server['transport']=='streamable_http' or server.get('profile')=='github'
+PROFILES={'business_strategy':'backend.mcp_server','evidence_utilities':'backend.mcp_utilities','github':'backend.github_mcp','instagram_social':'backend.social_mcp','instagram_login_social':'backend.social_mcp','youtube_social':'backend.social_mcp'}
+def is_external(server):return server['transport']=='streamable_http' or server.get('profile') in ('github','instagram_social','instagram_login_social','youtube_social')
 class ServerInput(BaseModel):
     model_config=ConfigDict(extra='forbid')
     name:str=Field(min_length=1,max_length=100)
     transport:Literal['stdio','streamable_http']='stdio'
-    profile:Literal['business_strategy','evidence_utilities','github']|None='business_strategy'
+    profile:Literal['business_strategy','evidence_utilities','github','instagram_social','instagram_login_social','youtube_social']|None='business_strategy'
     url:str|None=Field(default=None,max_length=1000)
     auth_env:str|None=Field(default=None,pattern=r'^EVOLVYN_MCP_[A-Z0-9_]+$',max_length=100)
     credential_id:str|None=Field(default=None,max_length=100)
@@ -95,6 +95,12 @@ class MCPRegistry:
                     if not row.get('credential_id'):raise HTTPException(409,'Authorize GitHub first')
                     env['EVOLVYN_GITHUB_TOKEN']=self.vault.reveal_for_service(owner,row['credential_id'],'mcp')
                     env.update({key:os.environ[key] for key in ('HTTP_PROXY','HTTPS_PROXY','NO_PROXY','SSL_CERT_FILE') if os.getenv(key)})
+                if row.get('profile') in ('instagram_social','instagram_login_social','youtube_social'):
+                    if not self.policy.settings(owner)['allow_external_processing']:raise HTTPException(403,'External processing is disabled')
+                    if not row.get('credential_id'):raise HTTPException(409,'Save an authorized provider token in the vault first')
+                    env['EVOLVYN_SOCIAL_TOKEN']=self.vault.reveal_for_service(owner,row['credential_id'],'mcp')
+                    env['EVOLVYN_SOCIAL_PROVIDER']={'instagram_social':'instagram','instagram_login_social':'instagram_login','youtube_social':'youtube'}[row['profile']]
+                    env.update({key:os.environ[key] for key in ('HTTP_PROXY','HTTPS_PROXY','NO_PROXY','SSL_CERT_FILE','EVOLVYN_META_API_VERSION') if os.getenv(key)})
                 parameters=StdioServerParameters(command=sys.executable,args=['-m',PROFILES[row['profile']]],env=env)
                 async with stdio_client(parameters) as (read,write):
                     async with ClientSession(read,write) as session:

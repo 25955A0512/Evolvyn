@@ -1,5 +1,7 @@
 # Implementation checklist
 
+Social evidence update: Growth Insights now integrates authorized Instagram/YouTube read adapters and the extensible social-v1 MCP contract with the shared registry, graph jobs, vault and scheduler. Normalized snapshots, visible receipts, role reviews, JSON exports, nullable metrics and conservative forecast suppression are implemented. Live Meta authorization, social OAuth refresh/publishing and comprehensive retention remain incomplete. See [social acceptance scope](SOCIAL_GROWTH.md) and [audit](SOCIAL_GROWTH_AUDIT.md).
+
 Public OAuth UX: removed deployment instructions from public sign-in, retained owner/admin diagnostics, added availability/error/retry states and direct configured-provider links with Google/GitHub icons. Browser acceptance verifies the actual start redirects/state/PKCE with controlled provider boundaries, email signup, owner settings and mobile; 54 focused backend tests and the frontend build pass. Real Google/GitHub sign-in awaits provider applications and Render credentials. See [public OAuth setup](PUBLIC_OAUTH_SETUP.md).
 
 Vercel/Render preparation: 265 backend tests passed; production frontend build and actual managed-style API/compiler process checks passed, including SQL health and vault decryption after an API restart. Prepared Render Blueprint, private compiler/DB wiring, stable vault seed custody, Vercel SPA/proxy configuration and deployment guide. Actual resources, public URL wiring and live OAuth remain pending dashboard deployment. See [Vercel + Render](VERCEL_RENDER_DEPLOYMENT.md).
