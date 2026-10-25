@@ -178,3 +178,39 @@ def test_local_only_project_cannot_begin_social_oauth(c):
     project=c.post('/api/projects',json={'name':'Local only','business_id':business['id'],'goal':'Keep data local'}).json()
     with module.conn() as db:db.execute("UPDATE records SET body=body || %s::jsonb WHERE id=%s",(json.dumps({'project_id':project['id']}),c.conv))
     assert c.post('/api/integrations/instagram/authorize',json={'conversation_id':c.conv}).status_code==403
+
+
+def test_data_enveloped_token_exchange_connects_one_verified_account(c,monkeypatch):
+    token='synthetic-envelope-token';original=httpx.AsyncClient
+    async def handler(request):
+        if request.url.host=='api.instagram.com':return httpx.Response(200,json={'data':[{'access_token':token,'user_id':12345,'permissions':['instagram_business_basic']}]})
+        if request.url.path=='/access_token':return httpx.Response(200,json={'access_token':token,'expires_in':5184000})
+        return httpx.Response(200,json={'user_id':'12345','username':'synthetic_shop'})
+    monkeypatch.setattr(instagram_oauth,'httpx',SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(handler),**kw)))
+    r=callback(c,begin(c));assert r.status_code==303,r.text
+    source=c.get('/api/growth/social',params={'conversation_id':c.conv}).json()[0]
+    assert source['account_id']=='12345' and not source['last_success_at']
+
+@pytest.mark.parametrize('payload',[{},[],{'data':[]},{'data':[{},{}]},{'data':'wrong'},{'access_token':'synthetic','data':[{'user_id':12345}]},{'data':[{'access_token':'synthetic-token','user_id':'bad'}]}])
+def test_ambiguous_or_invalid_token_envelopes_never_connect(c,monkeypatch,payload):
+    original=httpx.AsyncClient
+    async def handler(request):return httpx.Response(200,json=payload)
+    monkeypatch.setattr(instagram_oauth,'httpx',SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(handler),**kw)))
+    r=callback(c,begin(c));assert r.status_code==502
+    assert 'authorization_code_' in r.json()['detail']
+    assert c.get('/api/growth/social',params={'conversation_id':c.conv}).json()==[]
+
+@pytest.mark.parametrize('stage',['authorization_code_exchange','long_lived_exchange','account_verification'])
+def test_safe_stage_diagnostics_without_upstream_secret_reflection(c,monkeypatch,caplog,stage):
+    original=httpx.AsyncClient;secret='synthetic-sensitive-upstream-body'
+    async def handler(request):
+        target='authorization_code_exchange' if request.url.host=='api.instagram.com' else 'long_lived_exchange' if request.url.path=='/access_token' else 'account_verification'
+        if target==stage:return httpx.Response(400,json={'error':{'message':secret,'code':190,'error_subcode':460,'fbtrace_id':secret}})
+        if target=='authorization_code_exchange':return httpx.Response(200,json={'data':[{'access_token':'synthetic-short-token','user_id':12345}]})
+        if target=='long_lived_exchange':return httpx.Response(200,json={'access_token':'synthetic-long-token','expires_in':5184000})
+        raise AssertionError('Unexpected provider call')
+    monkeypatch.setattr(instagram_oauth,'httpx',SimpleNamespace(AsyncClient=lambda **kw:original(transport=httpx.MockTransport(handler),**kw)))
+    r=callback(c,begin(c));assert r.status_code==502
+    detail=r.json()['detail'];assert stage in detail and 'Meta code 190' in detail and 'subcode 460' in detail
+    assert secret not in r.text and secret not in caplog.text and 'synthetic-long-token' not in r.text
+    assert c.get('/api/growth/social',params={'conversation_id':c.conv}).json()==[]

@@ -43,3 +43,9 @@ Authorization uses a single-use hashed state, expiring HttpOnly/SameSite=Lax bro
 Live acceptance still requires the operator's Meta application configuration, provider approval and a real authorized professional account. These controlled tests do not prove Meta has approved the app or that public Vercel/Render deployments are healthy. Follow current Meta documentation at https://developers.facebook.com/docs/instagram-platform/ .
 
 Validated locally: full regression run **305 passed**; final focused OAuth/social run **43 passed** (includes the additional renewal/revocation cases and actual asynchronous cancellation); production TypeScript/Vite build and desktop/mobile OAuth browser journey passed. Provider/model responses were controlled test boundaries; no live Meta or public deployment acceptance is claimed.
+
+## Callback diagnostics
+
+The initial code exchange accepts both a flat token object and a single-account `data` array envelope. Ambiguous multi-account or conflicting envelopes are rejected; no account is guessed. Callback failures identify the initial exchange, long-lived exchange, or profile verification stage and may include only allowlisted numeric HTTP/Meta error codes. Provider error messages, trace IDs, URLs, codes and tokens are not reflected. Render receives a matching payload-free diagnostic and request ID. Always retry through Connect with Instagram; OAuth codes/state are single-use. A screenshot of a generic old failure cannot establish which provider request failed.
+
+Callback-format patch verification: **67 focused OAuth/identity tests passed**, plus the desktop/mobile OAuth browser journey using a single-account `data` token envelope and explicitly controlled provider responses. Live callback failure diagnosis still requires a new operator-authorized attempt after deployment.

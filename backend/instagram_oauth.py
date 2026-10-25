@@ -25,6 +25,60 @@ class RedactTokenURLs(logging.Filter):
         return True
 logging.getLogger('httpx').addFilter(RedactTokenURLs())
 
+class InstagramProviderFailure(ValueError):
+    def __init__(self,stage,status=None,code=None,subcode=None):
+        super().__init__('Instagram provider request failed')
+        self.stage=stage;self.status=status;self.code=code;self.subcode=subcode
+
+def authorization_result(value):
+    """Accept flat and single-account data envelopes; never select among accounts."""
+    if not isinstance(value,dict):raise ValueError('Invalid token envelope')
+    if 'data' in value:
+        rows=value['data']
+        if 'access_token' in value or 'user_id' in value or not isinstance(rows,list) or len(rows)!=1 or not isinstance(rows[0],dict):raise ValueError('Ambiguous token envelope')
+        value=rows[0]
+    return value
+
+async def instagram_json(client,method,url,stage,**kwargs):
+    # Read error responses within the same byte budget. Retain numeric diagnostics
+    # only: provider messages can reflect credentials, codes or request URLs.
+    chunks=[];size=0
+    try:
+        async with client.stream(method,url,**kwargs) as response:
+            async for chunk in response.aiter_bytes():
+                size+=len(chunk)
+                if size>262144:raise InstagramProviderFailure(stage,response.status_code)
+                chunks.append(chunk)
+            status=response.status_code
+        try:value=json.loads(b''.join(chunks))
+        except (ValueError,UnicodeError):raise InstagramProviderFailure(stage,status) from None
+        if not 200<=status<300 or isinstance(value,dict) and 'error' in value:
+            error=value.get('error',value) if isinstance(value,dict) else {}
+            error=error if isinstance(error,dict) else {}
+            number=lambda key:error[key] if type(error.get(key)) is int and 0<=error[key]<=10**9 else None
+            raise InstagramProviderFailure(stage,status,number('code'),number('error_subcode'))
+        if not isinstance(value,dict):raise InstagramProviderFailure(stage,status)
+        return value
+    except InstagramProviderFailure:raise
+    except Exception:raise InstagramProviderFailure(stage) from None
+
+def provider_failure_detail(error,stage):
+    stage=error.stage if isinstance(error,InstagramProviderFailure) else stage
+    labels={
+        'authorization_code_exchange':'Instagram rejected or could not complete the initial authorization-code exchange. Verify Render uses the Instagram App ID and Instagram App Secret from Instagram Login setup, and the exact registered redirect URI.',
+        'authorization_code_response':'Instagram returned an unsupported or invalid initial token response.',
+        'long_lived_exchange':'Instagram could not exchange the short-lived token for a long-lived token. Verify the Instagram App Secret and app/account eligibility.',
+        'long_lived_response':'Instagram returned an invalid long-lived token or expiration.',
+        'account_verification':'The authorized Instagram profile could not be read. Check professional-account eligibility and instagram_business_basic access.',
+        'account_identity':'The returned Instagram account did not match the authorized identity or profile contract. No account was connected.',
+    }
+    detail=labels.get(stage,'Instagram authorization could not be verified.')
+    diagnostic=[stage]
+    if isinstance(error,InstagramProviderFailure):
+        for label,value in [('HTTP',error.status),('Meta code',error.code),('subcode',error.subcode)]:
+            if value is not None:diagnostic.append(label+' '+str(value))
+    return detail+' Diagnostic: '+', '.join(diagnostic)+'. Return to Growth Insights and click Connect with Instagram again; do not reload this one-time callback.'
+
 def token_response(value):
     token=value.get('access_token');ttl=value.get('expires_in')
     if not isinstance(token,str) or not 8<=len(token)<=8192 or any(c in token for c in ('\r','\n')) or type(ttl) is not int or not 86400<ttl<=60*86400:raise ValueError('Invalid long-lived token response')
@@ -77,17 +131,25 @@ class InstagramOAuth:
             if not code or len(code)>8192:raise HTTPException(400,'Missing or invalid authorization code')
             version=api_version()
             try:
-                issued_at=stamp()
+                issued_at=stamp();stage='authorization_code_exchange'
                 async with asyncio.timeout(30),httpx.AsyncClient(timeout=12,follow_redirects=False) as client:
-                    result=await provider_json(client,'POST','https://api.instagram.com/oauth/access_token',data={'client_id':settings['client_id'],'client_secret':settings['client_secret'],'grant_type':'authorization_code','redirect_uri':settings['redirect_uri'],'code':code})
+                    result=await instagram_json(client,'POST','https://api.instagram.com/oauth/access_token',stage,data={'client_id':settings['client_id'],'client_secret':settings['client_secret'],'grant_type':'authorization_code','redirect_uri':settings['redirect_uri'],'code':code})
+                    stage='authorization_code_response';result=authorization_result(result)
                     token=result.get('access_token');subject=str(result.get('user_id',''))
                     if not isinstance(token,str) or not 8<=len(token)<=8192 or any(x in token for x in ('\r','\n')) or not re.fullmatch(r'\d{1,100}',subject):raise ValueError('Invalid token response')
-                    exchanged=await provider_json(client,'GET','https://graph.instagram.com/access_token',params={'grant_type':'ig_exchange_token','client_secret':settings['client_secret'],'access_token':token})
-                    token,ttl=token_response(exchanged)
-                    profile=await provider_json(client,'GET','https://graph.instagram.com/'+version+'/me',params={'fields':'user_id,username'},headers={'Authorization':'Bearer '+token})
+                    stage='long_lived_exchange'
+                    exchanged=await instagram_json(client,'GET','https://graph.instagram.com/access_token',stage,params={'grant_type':'ig_exchange_token','client_secret':settings['client_secret'],'access_token':token})
+                    stage='long_lived_response';token,ttl=token_response(exchanged)
+                    stage='account_verification'
+                    profile=await instagram_json(client,'GET','https://graph.instagram.com/'+version+'/me',stage,params={'fields':'user_id,username'},headers={'Authorization':'Bearer '+token})
+                    stage='account_identity'
                     if str(profile.get('user_id'))!=subject or not isinstance(profile.get('username'),str) or not re.fullmatch(r'[A-Za-z0-9._]{1,30}',profile['username']) or token in json.dumps(profile):raise ValueError('Instagram account verification failed')
                     expires_at=(issued_at+timedelta(seconds=ttl)).isoformat()
-            except Exception:raise HTTPException(502,'Instagram token exchange or account verification failed. Check the Meta app, account eligibility, redirect URI and permissions. No connection was marked verified.') from None
+            except Exception as failure:
+                # Safe Render diagnostic: never log exception text or upstream bodies.
+                entry={'action':'instagram.oauth.failed','stage':failure.stage if isinstance(failure,InstagramProviderFailure) else stage,'request_id':getattr(request.state,'request_id',''),'http_status':failure.status if isinstance(failure,InstagramProviderFailure) else None,'provider_code':failure.code if isinstance(failure,InstagramProviderFailure) else None,'provider_subcode':failure.subcode if isinstance(failure,InstagramProviderFailure) else None}
+                logging.getLogger('evolvyn.requests').warning(json.dumps(entry))
+                raise HTTPException(502,provider_failure_detail(failure,stage)) from None
             # Revalidate after the external call; neither logout nor a policy change grants a connection.
             self.validate_session(owner,data);self.authorize_scope(owner,data['conversation_id'])
             prior=next((r for r in s['listing'](owner,'social_source') if r.get('oauth_provider')=='instagram' and r['conversation']==data['conversation_id'] and r['account_id']==subject),None)
@@ -180,5 +242,5 @@ class InstagramOAuth:
             try:response=await self.finish(request,state,code,error)
             except HTTPException as failure:
                 if 'text/html' not in request.headers.get('accept',''):raise
-                response=HTMLResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Evolvyn Instagram connection</title><h1>Instagram connection needs attention</h1><p>'+html.escape(str(failure.detail))+'</p><a href="/growth?social=retry">Return to Growth Insights and try again</a>',status_code=failure.status_code)
+                response=HTMLResponse('<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Evolvyn Instagram connection</title><style>body{font-family:system-ui,sans-serif;max-width:760px;margin:64px auto;padding:24px;color:#243d33;line-height:1.7}h1{font-size:28px}a{color:#245c44}</style><h1>Instagram connection needs attention</h1><p>'+html.escape(str(failure.detail))+'</p><a href="/growth?social=retry">Return to Growth Insights and try again</a>',status_code=failure.status_code)
             response.delete_cookie(cookie_name(),path=cookie_path());response.headers['Cache-Control']='no-store';response.headers['Referrer-Policy']='no-referrer';return response
